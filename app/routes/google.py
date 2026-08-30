@@ -15,9 +15,9 @@ from app.models import Mixer, GoogleCalendarAccount, OAuthState
 
 google_bp = Blueprint("google", __name__)
 GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/calendar.events",
     "openid",
-    "email",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
 
 
@@ -56,8 +56,9 @@ def connect_google():
     session["oauth_state"] = state
     auth_url, _ = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
+        include_granted_scopes="false",
         prompt="consent",
+        login_hint=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip(),
         state=state,
     )
     current_app.logger.info(

@@ -3,6 +3,15 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
+os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://restless-24-7.onrender.com/google/callback")
+os.environ.setdefault("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "adminrestless@gmail.com")
+os.environ.setdefault("MIXER_SLEEZE_PASSWORD", "test-sleeze-password")
+os.environ.setdefault("MIXER_KAYC_PASSWORD", "test-kayc-password")
+os.environ.setdefault("MIXER_PPO_PASSWORD", "test-ppo-password")
+os.environ.setdefault("MIXER_BOA_PASSWORD", "test-boa-password")
+
 from app import create_app
 from app.extensions import db
 from app.models import GoogleCalendarAccount, Mixer, Reservation
@@ -23,9 +32,11 @@ class FakeFlow:
     credentials = FakeCredentials()
     exchanged_redirect_uri = None
     fetch_token_kwargs = None
+    authorization_kwargs = None
 
     def authorization_url(self, **kwargs):
         self.state = kwargs["state"]
+        self.authorization_kwargs = kwargs
         return "https://accounts.google.com/o/oauth2/auth?state=hidden", None
 
     def fetch_token(self, code, **kwargs):
@@ -93,6 +104,9 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertEqual(callback.status_code, 302)
         self.assertEqual(flow.redirect_uri, "https://restless-24-7.onrender.com/google/callback")
         self.assertNotIn("redirect_uri", flow.fetch_token_kwargs)
+        self.assertEqual(flow.authorization_kwargs["include_granted_scopes"], "false")
+        self.assertEqual(flow.authorization_kwargs["prompt"], "consent")
+        self.assertEqual(flow.authorization_kwargs["login_hint"], "adminrestless@gmail.com")
         with self.app.app_context():
             account = GoogleCalendarAccount.query.one()
             self.assertTrue(account.access_token)
