@@ -518,7 +518,7 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertTrue(response.get_json()["success"])
         with self.app.app_context():
             booking = Reservation.query.filter_by(client_name="Offline Calendar Client").one()
-            self.assertEqual(booking.status, "pending")
+            self.assertEqual(booking.status, "confirmed")
             self.assertEqual(booking.google_sync_status, "error")
 
     def test_frontend_requests_mixer_date_availability_and_has_persistent_navbar(self):

@@ -57,7 +57,6 @@ def create_booking():
             mixer.id,
             booking.id,
         )
-        booking.status = "pending"
         booking.google_sync_status = "not_connected"
         db.session.commit()
         return jsonify({
@@ -77,7 +76,6 @@ def create_booking():
         db.session.commit()
     except Exception as exc:
         current_app.logger.exception("Google Calendar event creation failed for booking_id=%s", booking.id)
-        booking.status = "pending"
         booking.google_sync_status = "error"
         booking.last_google_error = str(exc)
         db.session.add(GoogleSyncLog(
