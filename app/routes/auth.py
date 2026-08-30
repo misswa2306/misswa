@@ -27,6 +27,7 @@ def login():
       <input name="password" type="password" placeholder="Mot de passe" required><br><br>
       <button type="submit">Connexion</button>
     </form>
+        <p><a href="/google/connect">Connecter Google Calendar</a></p>
     ''')
 
 

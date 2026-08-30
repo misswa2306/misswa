@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime
 
 from flask import Blueprint, current_app, redirect, request, session, url_for, jsonify
-from flask_login import login_required, current_user
+from flask_login import login_required
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -43,7 +43,6 @@ def build_oauth_flow():
 
 
 @google_bp.route("/google/connect")
-@login_required
 def connect_google():
     flow = build_oauth_flow()
     state = secrets.token_urlsafe(32)
@@ -67,9 +66,6 @@ def google_callback():
     state = request.args.get("state")
     if not state or state != session.get("oauth_state"):
         return jsonify({"error": "Invalid OAuth state"}), 400
-
-    if not current_user.is_authenticated:
-        return jsonify({"error": "Authentication required"}), 401
 
     code = request.args.get("code")
     if not code:
