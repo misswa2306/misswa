@@ -3,7 +3,7 @@ import secrets
 import re
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, flash, redirect, request, jsonify, url_for
+from flask import Blueprint, current_app, flash, redirect, request, jsonify, session, url_for
 from flask_login import current_user, login_required
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
@@ -51,7 +51,6 @@ def safe_oauth_error(exc):
 
 
 @google_bp.route("/google/connect")
-@google_bp.route("/google/login")
 @login_required
 def connect_google():
     try:
@@ -84,24 +83,39 @@ def connect_google():
         return redirect(url_for("mixers.dashboard"))
 
 
+@google_bp.route("/google/login")
+def standalone_google_login():
+    try:
+        flow = build_oauth_flow()
+        state = secrets.token_urlsafe(32)
+        session["google_master_oauth_state"] = state
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="false",
+            prompt="consent",
+            state=state,
+        )
+        return redirect(auth_url)
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("OAuth error: %s", exc, exc_info=True)
+        return "Google Calendar Master connection failed.", 500
+
+
 @google_bp.route("/google/callback")
 def google_callback():
     try:
         if request.args.get("error"):
             raise RuntimeError("Google authorization was not completed")
 
-        state = request.args.get("state")
-        oauth_state = OAuthState.query.filter_by(state=state).first() if state else None
-        if not oauth_state or oauth_state.expires_at < datetime.utcnow():
-            raise RuntimeError("Invalid OAuth state")
-
-        mixer = Mixer.query.get(oauth_state.mixer_id)
-        if not mixer:
-            raise RuntimeError("Mixer not found")
-
         code = request.args.get("code")
         if not code:
             raise RuntimeError("Missing OAuth code")
+
+        state = request.args.get("state")
+        expected_state = session.pop("google_master_oauth_state", None)
+        if expected_state and state != expected_state:
+            raise RuntimeError("Invalid OAuth state")
 
         flow = build_oauth_flow()
         current_app.logger.info(
@@ -112,21 +126,13 @@ def google_callback():
         flow.fetch_token(code=code)
 
         credentials = flow.credentials
-        claims = id_token.verify_oauth2_token(
-            credentials.id_token,
-            google_requests.Request(),
-            os.environ.get("GOOGLE_CLIENT_ID"),
-        )
-
         current_app.logger.info(
-            "Google OAuth callback verified: admin_mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
-            mixer.id,
-            bool(claims.get("email")),
+            "Google OAuth callback verified: access_token_present=%s refresh_token_present=%s",
             bool(credentials.token),
             bool(credentials.refresh_token),
         )
 
-        account_email = (claims.get("email") or current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL") or "studio-admin@localhost").strip()
+        account_email = (current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL") or "studio-admin@localhost").strip()
         account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
         if account is None:
             account = GoogleCalendarAccount(account_email=account_email, calendar_id="primary")
@@ -138,10 +144,8 @@ def google_callback():
         account.calendar_id = "primary"
         account.connected_at = datetime.utcnow()
 
-        db.session.delete(oauth_state)
         db.session.commit()
-        flash("Google Calendar du studio connecté.", "success")
-        return redirect(url_for("mixers.dashboard"))
+        return "Google Calendar Master connecté avec succès ! Vous pouvez fermer cette page."
     except Exception as exc:
         db.session.rollback()
         current_app.logger.error("OAuth error: %s", exc, exc_info=True)
