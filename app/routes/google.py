@@ -83,7 +83,7 @@ def google_callback():
         return jsonify({"error": "Google OAuth token exchange failed"}), 502
 
     credentials = flow.credentials
-    account_email = os.environ.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
+    account_email = current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
     if not account_email:
         current_app.logger.error("Google OAuth callback rejected: admin account email is not configured")
         return jsonify({"error": "Google Calendar account email is not configured"}), 500
@@ -128,7 +128,7 @@ def google_callback():
 @google_bp.route("/google/disconnect", methods=["POST"])
 @login_required
 def disconnect_google():
-    account_email = os.environ.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
+    account_email = current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
     account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
     if account:
         account.access_token = None

@@ -11,11 +11,16 @@ from app.models import GoogleCalendarAccount
 
 
 class GoogleCalendarService:
+    @staticmethod
+    def get_shared_account():
+        account_email = current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
+        if not account_email:
+            raise RuntimeError("GOOGLE_CALENDAR_ACCOUNT_EMAIL is not configured")
+        return GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
+
     def __init__(self, mixer, account=None):
         self.mixer = mixer
-        self.account = account or GoogleCalendarAccount.query.filter_by(
-            account_email=os.environ.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
-        ).first()
+        self.account = account or self.get_shared_account()
 
     def get_credentials(self):
         if not self.account or not self.account.access_token:

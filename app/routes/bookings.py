@@ -36,12 +36,11 @@ def create_booking():
     if error:
         return jsonify({"success": False, "message": error}), 409
 
-    account = GoogleCalendarAccount.query.filter_by(
-        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
-    ).first()
+    account = GoogleCalendarService.get_shared_account()
     if not account or not account.access_token:
         current_app.logger.warning(
-            "Booking sync stopped: shared Google account unavailable for mixer_id=%s booking_id=%s",
+            "Booking sync stopped: shared Google account unavailable email_configured=%s mixer_id=%s booking_id=%s",
+            bool(current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL")),
             mixer.id,
             booking.id,
         )
@@ -50,7 +49,7 @@ def create_booking():
         db.session.commit()
         return jsonify({
             "success": False,
-            "message": "Reservation saved, but Google Calendar is not connected for this mixer.",
+            "message": "Reservation saved, but the shared administrator Google Calendar is not connected.",
             "booking_id": booking.id,
         }), 503
 

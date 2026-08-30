@@ -12,7 +12,7 @@ mixers_bp = Blueprint("mixers", __name__)
 def dashboard():
     mixer = Mixer.query.get(current_user.id)
     account = GoogleCalendarAccount.query.filter_by(
-        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
+        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
     ).first()
     return render_template_string('''
         <h2>Dashboard mixeur</h2>
