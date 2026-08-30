@@ -22,7 +22,7 @@ class MixerGoogleCalendarService:
         self.mixer = mixer
 
     def get_credentials(self):
-        if not self.mixer.google_access_token:
+        if not self.mixer.google_access_token and not self.mixer.google_refresh_token:
             return None
 
         credentials = Credentials(
@@ -35,7 +35,7 @@ class MixerGoogleCalendarService:
             expiry=self.mixer.google_token_expiry,
         )
 
-        if credentials.expired and credentials.refresh_token:
+        if credentials.refresh_token and (not self.mixer.google_access_token or credentials.expired):
             credentials.refresh(Request())
             self.mixer.google_access_token = credentials.token
             self.mixer.google_refresh_token = credentials.refresh_token or self.mixer.google_refresh_token

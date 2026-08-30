@@ -34,7 +34,7 @@ def create_booking():
         return jsonify({"success": False, "message": "This time slot is not available."}), 409
 
     calendar_service = GoogleCalendarService(mixer)
-    if mixer.google_access_token:
+    if mixer.google_access_token or mixer.google_refresh_token:
         try:
             if not calendar_service.is_available_for_window(
                 data["booking_date"], data["start_time"], data["end_time"]
@@ -51,7 +51,7 @@ def create_booking():
     if error:
         return jsonify({"success": False, "message": error}), 409
 
-    if not mixer.google_access_token:
+    if not mixer.google_access_token and not mixer.google_refresh_token:
         current_app.logger.warning(
             "Booking sync stopped: mixer Google account unavailable mixer_id=%s booking_id=%s",
             mixer.id,
@@ -165,7 +165,7 @@ def update_booking(booking_id):
 
     db.session.commit()
 
-    if booking.mixer.google_access_token and booking.google_calendar_event_id:
+    if (booking.mixer.google_access_token or booking.mixer.google_refresh_token) and booking.google_calendar_event_id:
         try:
             GoogleCalendarService(booking.mixer).update_event(booking)
             booking.google_sync_status = "synced"
@@ -190,7 +190,7 @@ def update_booking(booking_id):
 def cancel_booking(booking_id):
     booking = Reservation.query.get_or_404(booking_id)
 
-    if booking.mixer.google_access_token and booking.google_calendar_event_id:
+    if (booking.mixer.google_access_token or booking.mixer.google_refresh_token) and booking.google_calendar_event_id:
         try:
             deleted = GoogleCalendarService(booking.mixer).delete_event(booking)
             if deleted:

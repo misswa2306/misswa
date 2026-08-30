@@ -48,7 +48,7 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             line-height: 1.6;
-            overflow-x: hidden;
+            overflow-x: clip;
             position: relative;
             scroll-behavior: smooth;
             background-image:
@@ -171,14 +171,14 @@
             font-family: 'Orbitron', sans-serif;
             letter-spacing: -0.04em;
         }
-am
+
         .site-nav {
             position: fixed;
             left: 0;
             right: 0;
             top: 0;
             width: 100%;
-            z-index: 50;
+            z-index: 1000;
             min-height: 110px;
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);

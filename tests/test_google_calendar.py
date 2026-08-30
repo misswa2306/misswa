@@ -154,6 +154,28 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             self.assertEqual(credentials.token, "new-access-token")
             self.assertEqual(mixer.google_refresh_token, "old-refresh-token")
 
+    def test_refresh_token_recovers_missing_access_token(self):
+        class RefreshableCredentials:
+            expired = True
+            refresh_token = "stored-refresh-token"
+            token = None
+            expiry = None
+
+            def refresh(self, request):
+                self.token = "recovered-access-token"
+                self.expiry = datetime.utcnow() + timedelta(hours=1)
+
+        with self.app.app_context(), patch(
+            "app.services.mixer_google_calendar_service.Credentials",
+            return_value=RefreshableCredentials(),
+        ), patch("app.services.mixer_google_calendar_service.Request"):
+            mixer = Mixer.query.filter_by(name="Kayc").one()
+            mixer.google_access_token = None
+            mixer.google_refresh_token = "stored-refresh-token"
+            credentials = MixerGoogleCalendarService(mixer).get_credentials()
+            self.assertEqual(credentials.token, "recovered-access-token")
+            self.assertEqual(mixer.google_access_token, "recovered-access-token")
+
     def test_freebusy_uses_mixer_primary_calendar_and_montreal_timezone(self):
         class FakeFreebusyQuery:
             def __init__(self):
@@ -504,7 +526,7 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             html = site.read()
         self.assertIn("position: fixed", html)
         self.assertIn("top: 0", html)
-        self.assertIn("z-index: 50", html)
+        self.assertIn("z-index: 1000", html)
         self.assertIn("/api/mixers/${mixerId}/availability?date=", html)
         self.assertIn("mixerSelect.addEventListener('change', refreshAvailability)", html)
         self.assertIn("refreshAvailability();", html)
