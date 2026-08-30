@@ -31,10 +31,8 @@ def get_default_mixer_passwords(required_names=None):
             passwords[name] = password
 
     if missing:
-        raise RuntimeError(
-            "Missing required mixer bootstrap environment variables: "
-            + ", ".join(missing)
-        )
+        for env_name in missing:
+            print(f"Warning: missing bootstrap env {env_name}; skipping mixer seeding for this environment.")
 
     return passwords
 
@@ -67,8 +65,15 @@ def create_app():
     app.register_blueprint(mixers_bp)
 
     with app.app_context():
-        db.create_all()
-        seed_default_mixers()
+        try:
+            db.create_all()
+        except Exception as exc:
+            app.logger.exception("Database initialization failed during app startup: %s", exc)
+
+        try:
+            seed_default_mixers()
+        except Exception as exc:
+            app.logger.exception("Default mixer seeding failed during app startup: %s", exc)
 
     return app
 
@@ -82,9 +87,11 @@ def seed_default_mixers():
         return
 
     passwords = get_default_mixer_passwords(missing_names)
+    if not passwords:
+        return
 
     for name, email in DEFAULT_MIXER_SEEDS:
-        if name not in missing_names:
+        if name not in missing_names or name not in passwords:
             continue
         existing = Mixer.query.filter_by(name=name).first()
         if existing is None:
