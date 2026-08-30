@@ -45,10 +45,11 @@ def create_booking():
         booking.last_google_error = str(exc)
         db.session.commit()
         return jsonify({
-            "success": False,
+            "success": True,
             "message": "Reservation saved, but Google Calendar is not configured.",
             "booking_id": booking.id,
-        }), 503
+            "google_sync_status": booking.google_sync_status,
+        }), 201
     if not account or not account.access_token:
         current_app.logger.warning(
             "Booking sync stopped: shared Google account unavailable email_configured=%s mixer_id=%s booking_id=%s",
@@ -60,10 +61,11 @@ def create_booking():
         booking.google_sync_status = "not_connected"
         db.session.commit()
         return jsonify({
-            "success": False,
+            "success": True,
             "message": "Reservation saved, but the shared administrator Google Calendar is not connected.",
             "booking_id": booking.id,
-        }), 503
+            "google_sync_status": booking.google_sync_status,
+        }), 201
 
     try:
         current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
@@ -86,10 +88,11 @@ def create_booking():
         ))
         db.session.commit()
         return jsonify({
-            "success": False,
+            "success": True,
             "message": "Reservation saved, but Google Calendar synchronization failed.",
             "booking_id": booking.id,
-        }), 502
+            "google_sync_status": booking.google_sync_status,
+        }), 201
 
     return jsonify({
         "success": True,

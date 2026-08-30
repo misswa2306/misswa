@@ -1656,8 +1656,6 @@ am
     <script>
         const navToggle = document.querySelector('.nav-toggle');
         const navMenu = document.getElementById('navMenu');
-        const siteNav = document.querySelector('.site-nav');
-
         const mouseGlow = document.querySelector('.mouse-glow');
 
         document.addEventListener('pointermove', (event) => {
@@ -1685,16 +1683,6 @@ am
                 navToggle.setAttribute('aria-expanded', String(isOpen));
             });
         }
-
-        function updateNavState() {
-            if (!siteNav) return;
-            siteNav.classList.toggle('scrolled', window.scrollY > 12);
-        }
-
-        updateNavState();
-        window.addEventListener('scroll', () => {
-            requestAnimationFrame(updateNavState);
-        }, { passive: true });
 
         const previewLimit = 30;
 
@@ -1810,6 +1798,8 @@ am
         const endTime = document.getElementById('end_time');
         const timeSummary = document.getElementById('timeSummary');
         const mixerSelect = document.getElementById('mixer');
+        let mixerIds = {};
+        let availabilityRequestId = 0;
 
         document.querySelectorAll('.team-book').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -1845,6 +1835,20 @@ am
                 .filter((part) => part.type !== 'literal')
                 .map((part) => part.value);
             return { year: Number(year), month: Number(month), day: Number(day) };
+        }
+
+        function getMontrealTimeParts(date = new Date()) {
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Montreal',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            const parts = formatter.formatToParts(date);
+            return {
+                hour: Number(parts.find((part) => part.type === 'hour').value),
+                minute: Number(parts.find((part) => part.type === 'minute').value)
+            };
         }
 
         function toDateKey(date) {
@@ -1896,23 +1900,33 @@ am
             return best ? best.value : '12:00';
         }
 
-        function buildTimeGrid(containerId, selectedValue, type) {
+        function buildTimeGrid(containerId, selectedValue, type, occupied) {
             const container = document.getElementById(containerId);
             const options = [];
             const todayDateKey = toDateKey(new Date());
             const isTodaySelection = selectedDate.value === todayDateKey;
-            const currentHour = new Date().getHours();
+            const currentTime = getMontrealTimeParts();
+            const currentMinutes = currentTime.hour * 60 + currentTime.minute;
 
             for (let hour = 0; hour <= 23; hour++) {
-                if (isTodaySelection && hour <= currentHour) continue;
-                options.push(pad(hour) + ':00');
+                const value = pad(hour) + ':00';
+                const valueMinutes = hour * 60;
+                const isPast = isTodaySelection && valueMinutes <= currentMinutes;
+                const isOccupied = occupied.some((booking) => {
+                    const bookingStart = diffMinutes('00:00', booking.start_time);
+                    const bookingEnd = diffMinutes('00:00', booking.end_time);
+                    return valueMinutes >= bookingStart && valueMinutes < bookingEnd;
+                });
+                if (!isPast) options.push({ value, disabled: isOccupied });
             }
 
-            options.forEach((value) => {
+            options.forEach(({ value, disabled }) => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'time-card';
                 if (value === selectedValue) button.classList.add('is-selected');
+                button.disabled = disabled;
+                if (disabled) button.classList.add('is-disabled');
                 button.textContent = value;
                 button.addEventListener('click', function () {
                     const currentStart = startTime.value || '10:00';
@@ -1955,6 +1969,36 @@ am
                 });
                 container.appendChild(button);
             });
+        }
+
+        async function refreshAvailability() {
+            const requestId = ++availabilityRequestId;
+            const mixerId = mixerIds[mixerSelect.value];
+            if (!mixerId || !selectedDate.value) return;
+
+            try {
+                const response = await fetch(`/api/mixers/${mixerId}/availability?date=${encodeURIComponent(selectedDate.value)}`);
+                const result = await response.json();
+                if (!response.ok || requestId !== availabilityRequestId) return;
+                const occupied = result.occupied || [];
+                document.getElementById('startGrid').innerHTML = '';
+                document.getElementById('endGrid').innerHTML = '';
+                buildTimeGrid('startGrid', startTime.value, 'start', occupied);
+                buildTimeGrid('endGrid', endTime.value, 'end', occupied);
+            } catch (error) {
+                if (requestId !== availabilityRequestId) return;
+                document.getElementById('startGrid').innerHTML = '';
+                document.getElementById('endGrid').innerHTML = '';
+                buildTimeGrid('startGrid', startTime.value, 'start', []);
+                buildTimeGrid('endGrid', endTime.value, 'end', []);
+            }
+        }
+
+        async function loadMixersAndAvailability() {
+            const response = await fetch('/api/mixers');
+            const mixers = await response.json();
+            mixerIds = Object.fromEntries(mixers.map((mixer) => [mixer.name, mixer.id]));
+            await refreshAvailability();
         }
 
         function renderCalendar() {
@@ -2006,11 +2050,12 @@ am
                     selectedDate.value = this.dataset.date;
                     const selectedDateValue = this.dataset.date;
                     const isToday = selectedDateValue === toDateKey(new Date());
-                    const currentHour = new Date().getHours();
+                    const currentTime = getMontrealTimeParts();
+                    const currentMinutes = currentTime.hour * 60 + currentTime.minute;
                     if (isToday) {
                         const validTimes = [];
                         for (let hour = 0; hour <= 23; hour++) {
-                            if (hour > currentHour) validTimes.push(pad(hour) + ':00');
+                            if (hour * 60 > currentMinutes) validTimes.push(pad(hour) + ':00');
                         }
                         if (!validTimes.includes(startTime.value)) {
                             startTime.value = validTimes[0] || '10:00';
@@ -2019,6 +2064,7 @@ am
                             endTime.value = validTimes.length > 1 ? validTimes[1] : '12:00';
                         }
                     }
+                    refreshAvailability();
                 });
 
                 calendarDays.appendChild(button);
@@ -2035,11 +2081,16 @@ am
             renderCalendar();
         });
 
-        buildTimeGrid('startGrid', '10:00', 'start');
-        buildTimeGrid('endGrid', '12:00', 'end');
         updateSummary();
         selectedDate.value = toDateKey(new Date());
         renderCalendar();
+        loadMixersAndAvailability().catch(() => {
+            document.getElementById('startGrid').innerHTML = '';
+            document.getElementById('endGrid').innerHTML = '';
+            buildTimeGrid('startGrid', '10:00', 'start', []);
+            buildTimeGrid('endGrid', '12:00', 'end', []);
+        });
+        mixerSelect.addEventListener('change', refreshAvailability);
 
         document.getElementById('bookingForm').addEventListener('submit', async function (event) {
             event.preventDefault();

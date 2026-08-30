@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from flask import Blueprint, current_app, jsonify, render_template_string, request
 from flask_login import login_required, current_user
 
-from app.models import GoogleCalendarAccount, Mixer
+from app.models import GoogleCalendarAccount, Mixer, Reservation
 from app.services.booking_service import validate_no_conflict
 
 mixers_bp = Blueprint("mixers", __name__)
@@ -48,10 +50,38 @@ def mixer_availability(mixer_id):
     start_time = request.args.get("start_time", "")
     end_time = request.args.get("end_time", "")
 
-    if not all((booking_date, start_time, end_time)):
+    if not booking_date:
         return jsonify({
             "success": False,
-            "message": "date, start_time and end_time are required",
+            "message": "date is required",
+        }), 400
+
+    if not start_time and not end_time:
+        try:
+            selected_date = datetime.strptime(booking_date, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"success": False, "message": "Invalid date format"}), 400
+
+        bookings = Reservation.query.filter(
+            Reservation.mixer_id == mixer.id,
+            Reservation.reservation_date == selected_date,
+            Reservation.status != "cancelled",
+        ).order_by(Reservation.start_time).all()
+        return jsonify({
+            "success": True,
+            "mixer_id": mixer.id,
+            "mixer": mixer.name,
+            "date": booking_date,
+            "occupied": [
+                {"start_time": booking.start_time, "end_time": booking.end_time}
+                for booking in bookings
+            ],
+        })
+
+    if not all((start_time, end_time)):
+        return jsonify({
+            "success": False,
+            "message": "start_time and end_time are required together",
         }), 400
 
     try:

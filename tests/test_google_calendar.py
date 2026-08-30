@@ -360,6 +360,142 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             self.assertEqual(rejected.status_code, 409)
             self.assertEqual(len(FakeCalendarService.events), 1)
 
+    def test_public_site_and_booking_work_without_admin_session(self):
+        client = self.app.test_client()
+        self.assertEqual(client.get("/").status_code, 200)
+        with patch.object(
+            __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]),
+            "GoogleCalendarService",
+            FakeCalendarService,
+        ):
+            response = client.post("/api/bookings", json={
+                "artist": "Public Client", "contact": "public@example.com", "service": "Mix",
+                "mixer": "Kayc", "booking_date": "2099-08-30", "start_time": "15:00", "end_time": "17:00",
+            })
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.get_json()["success"])
+
+    def test_availability_is_scoped_to_mixer_and_date(self):
+        with self.app.app_context():
+            sleeze = Mixer.query.filter_by(name="Sleeze").one()
+            kayc = Mixer.query.filter_by(name="Kayc").one()
+            db.session.add(Reservation(
+                client_name="Busy Client", client_contact="busy@example.com", service="Mix",
+                mixer_id=sleeze.id, reservation_date=datetime.strptime("2099-08-30", "%Y-%m-%d").date(),
+                start_time="15:00", end_time="17:00", status="confirmed",
+            ))
+            db.session.commit()
+            sleeze_response = self.app.test_client().get(
+                f"/api/mixers/{sleeze.id}/availability?date=2099-08-30"
+            )
+            kayc_response = self.app.test_client().get(
+                f"/api/mixers/{kayc.id}/availability?date=2099-08-30"
+            )
+        self.assertEqual(sleeze_response.status_code, 200)
+        self.assertEqual(sleeze_response.get_json()["occupied"], [{"start_time": "15:00", "end_time": "17:00"}])
+        self.assertEqual(kayc_response.get_json()["occupied"], [])
+
+    def test_all_four_mixers_accept_independent_bookings(self):
+        with patch.object(
+            __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]),
+            "GoogleCalendarService",
+            FakeCalendarService,
+        ):
+            client = self.app.test_client()
+            for index, mixer in enumerate(["Sleeze", "Kayc", "PPO", "Boa"], start=1):
+                response = client.post("/api/bookings", json={
+                    "artist": f"{mixer} Client", "contact": "mixer@example.com", "service": "Mix",
+                    "mixer": mixer, "booking_date": f"2099-09-{index:02d}",
+                    "start_time": "15:00", "end_time": "17:00",
+                })
+                self.assertEqual(response.status_code, 201, msg=mixer)
+        self.assertEqual(len(FakeCalendarService.events), 4)
+
+    def test_boundary_end_time_is_available_and_overlap_is_not(self):
+        with self.app.app_context():
+            sleeze = Mixer.query.filter_by(name="Sleeze").one()
+            db.session.add(Reservation(
+                client_name="Busy Client", client_contact="busy@example.com", service="Mix",
+                mixer_id=sleeze.id, reservation_date=datetime.strptime("2099-08-30", "%Y-%m-%d").date(),
+                start_time="15:00", end_time="17:00", status="confirmed",
+            ))
+            db.session.commit()
+            client = self.app.test_client()
+            at_end = client.get(
+                f"/api/mixers/{sleeze.id}/availability?date=2099-08-30&start_time=17:00&end_time=19:00"
+            )
+            overlap = client.get(
+                f"/api/mixers/{sleeze.id}/availability?date=2099-08-30&start_time=16:30&end_time=18:00"
+            )
+        self.assertTrue(at_end.get_json()["available"])
+        self.assertFalse(overlap.get_json()["available"])
+
+    def test_google_outage_keeps_booking_and_returns_success(self):
+        booking_module = __import__("app.routes.bookings", fromlist=["GoogleCalendarService"])
+        with patch.object(booking_module, "GoogleCalendarService") as service_class:
+            service_class.return_value.create_event.side_effect = RuntimeError("calendar unavailable")
+            response = self.app.test_client().post("/api/bookings", json={
+                "artist": "Offline Calendar Client", "contact": "offline@example.com", "service": "Mix",
+                "mixer": "PPO", "booking_date": "2099-10-01", "start_time": "15:00", "end_time": "17:00",
+            })
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.get_json()["success"])
+        with self.app.app_context():
+            booking = Reservation.query.filter_by(client_name="Offline Calendar Client").one()
+            self.assertEqual(booking.status, "pending")
+            self.assertEqual(booking.google_sync_status, "error")
+
+    def test_frontend_requests_mixer_date_availability_and_has_persistent_navbar(self):
+        with open(os.path.join(os.path.dirname(__file__), "..", "mix-site", "index.html"), encoding="utf-8") as site:
+            html = site.read()
+        self.assertIn("position: fixed", html)
+        self.assertIn("top: 0", html)
+        self.assertIn("z-index: 50", html)
+        self.assertIn("/api/mixers/${mixerId}/availability?date=", html)
+        self.assertIn("mixerSelect.addEventListener('change', refreshAvailability)", html)
+        self.assertIn("refreshAvailability();", html)
+        self.assertIn("button.disabled = disabled", html)
+        self.assertIn("src=\"/static/logo.png\"", html)
+
+    def test_missing_google_account_keeps_booking_saved(self):
+        with self.app.app_context():
+            GoogleCalendarAccount.query.delete()
+            db.session.commit()
+        response = self.app.test_client().post("/api/bookings", json={
+            "artist": "No Account Client", "contact": "no-account@example.com", "service": "Mix",
+            "mixer": "Sleeze", "booking_date": "2099-11-01", "start_time": "15:00", "end_time": "17:00",
+        })
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["google_sync_status"], "not_connected")
+
+    def test_cancelled_booking_does_not_occupy_availability(self):
+        with self.app.app_context():
+            sleeze = Mixer.query.filter_by(name="Sleeze").one()
+            db.session.add(Reservation(
+                client_name="Cancelled Client", client_contact="cancelled@example.com", service="Mix",
+                mixer_id=sleeze.id, reservation_date=datetime.strptime("2099-11-02", "%Y-%m-%d").date(),
+                start_time="15:00", end_time="17:00", status="cancelled",
+            ))
+            db.session.commit()
+            response = self.app.test_client().get(
+                f"/api/mixers/{sleeze.id}/availability?date=2099-11-02"
+            )
+        self.assertEqual(response.get_json()["occupied"], [])
+
+    def test_invalid_past_date_is_rejected_by_availability_check(self):
+        past_date = (datetime.now(ZoneInfo("America/Montreal")) - timedelta(days=1)).date().isoformat()
+        mixer_id = self.app.test_client().get("/api/mixers").get_json()[0]["id"]
+        response = self.app.test_client().get(
+            f"/api/mixers/{mixer_id}/availability?date={past_date}&start_time=15:00&end_time=17:00"
+        )
+        self.assertFalse(response.get_json()["available"])
+
+    def test_navbar_has_no_scroll_visibility_controller(self):
+        with open(os.path.join(os.path.dirname(__file__), "..", "mix-site", "index.html"), encoding="utf-8") as site:
+            html = site.read()
+        self.assertNotIn("window.addEventListener('scroll'", html)
+        self.assertNotIn("classList.toggle('scrolled'", html)
+
 
 if __name__ == "__main__":
     unittest.main()

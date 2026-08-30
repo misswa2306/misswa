@@ -34,7 +34,10 @@ def validate_no_conflict(mixer_id, reservation_date, start_time, end_time, exclu
     if selected_date == now_mt.date() and start_dt < now_mt:
         return False, "Reservation start time cannot be in the past"
 
-    query = Reservation.query.filter_by(mixer_id=mixer_id, status="confirmed").filter(
+    query = Reservation.query.filter(
+        Reservation.mixer_id == mixer_id,
+        Reservation.status != "cancelled",
+    ).filter(
         Reservation.reservation_date == selected_date
     )
 
