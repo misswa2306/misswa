@@ -781,13 +781,15 @@ am
             width: 42px;
             height: 42px;
             border-radius: 50%;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.04);
-            color: #fff;
+            border: 1px solid rgba(168, 85, 247, 0.6);
+            background: linear-gradient(135deg, #c7b3ff, #a855f7);
+            color: #120a1a;
             cursor: pointer;
             transition: all 0.2s ease;
             flex-shrink: 0;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02), 0 0 0 1px rgba(168,85,247,0.05);
+            box-shadow: 0 0 18px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+            font-weight: bold;
+            font-size: 0.9rem;
         }
 
         .preview-toggle:hover {
@@ -796,7 +798,7 @@ am
         }
 
         .progress-wrap {
-            display: flex;
+            display: none;
             align-items: center;
             gap: 12px;
             min-width: 0;
