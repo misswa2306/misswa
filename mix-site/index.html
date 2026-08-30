@@ -1947,7 +1947,7 @@ am
         selectedDate.value = toDateKey(new Date());
         renderCalendar();
 
-        document.getElementById('bookingForm').addEventListener('submit', function (event) {
+        document.getElementById('bookingForm').addEventListener('submit', async function (event) {
             event.preventDefault();
             const artist = document.getElementById('artist').value;
             const contact = document.getElementById('contact').value;
@@ -1963,10 +1963,42 @@ am
             }
 
             const success = document.getElementById('success');
-            success.innerText = 'Demande envoyée — ' + artist + ' • ' + service + ' avec ' + mixer + ' le ' + bookingDate + ' de ' + bookingStart + ' à ' + bookingEnd + '. Nous vous contactons bientôt (' + contact + ').';
-            success.style.display = 'block';
+            success.style.display = 'none';
 
-            setTimeout(() => { success.style.display = 'none'; }, 7000);
+            try {
+                const response = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        artist,
+                        contact,
+                        service,
+                        mixer,
+                        booking_date: bookingDate,
+                        start_time: bookingStart,
+                        end_time: bookingEnd
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Erreur lors de la réservation.');
+                }
+
+                success.innerText = 'Demande envoyée — ' + artist + ' • ' + service + ' avec ' + mixer + ' le ' + bookingDate + ' de ' + bookingStart + ' à ' + bookingEnd + '. Nous vous contactons bientôt (' + contact + ').';
+                success.style.display = 'block';
+            } catch (error) {
+                success.innerText = error.message || 'Erreur lors de la réservation.';
+                success.style.display = 'block';
+                success.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                success.style.color = '#fecaca';
+                success.style.background = 'rgba(127, 29, 29, 0.2)';
+                return;
+            }
+
             this.reset();
 
             selectedDate.value = toDateKey(new Date());
@@ -1981,6 +2013,13 @@ am
             });
             updateSummary();
             renderCalendar();
+
+            setTimeout(() => {
+                success.style.display = 'none';
+                success.style.borderColor = '';
+                success.style.color = '';
+                success.style.background = '';
+            }, 7000);
         });
     </script>
 </body>
