@@ -2113,7 +2113,8 @@
         document.getElementById('bookingForm').addEventListener('submit', async function (event) {
             event.preventDefault();
             const artist = document.getElementById('artist').value;
-            const clientInstagram = document.getElementById('client_instagram').value;
+            const enteredInstagram = document.getElementById('client_instagram').value.trim();
+            const clientInstagram = enteredInstagram.startsWith('@') ? enteredInstagram : '@' + enteredInstagram;
             const service = document.getElementById('service').value;
             const mixer = document.getElementById('mixer').value;
             const bookingDate = selectedDate.value;
@@ -2147,11 +2148,14 @@
 
                 const result = await response.json();
 
-                if (!response.ok) {
+                if (!response.ok || result.success !== true) {
                     throw new Error(result.message || 'Erreur lors de la réservation.');
                 }
 
-                success.innerText = 'Demande envoyée — ' + artist + ' • ' + service + ' avec ' + mixer + ' le ' + bookingDate + ' de ' + bookingStart + ' à ' + bookingEnd + '. Instagram : ' + clientInstagram + '.';
+                success.innerText = 'Ta session est book ' + clientInstagram + ' !!!! 🎉🎉';
+                success.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+                success.style.color = '#dcfce7';
+                success.style.background = 'rgba(34, 197, 94, 0.2)';
                 success.style.display = 'block';
             } catch (error) {
                 success.innerText = error.message || 'Erreur lors de la réservation.';
