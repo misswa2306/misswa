@@ -19,7 +19,8 @@ def create_booking():
     if not ok:
         return jsonify({"success": False, "message": message}), 400
 
-    mixer = Mixer.query.filter_by(name=data["mixer"]).first()
+    mixer_name = (data.get("mixer") or "").strip()
+    mixer = Mixer.query.filter(Mixer.name.ilike(mixer_name)).first()
     if not mixer:
         return jsonify({"success": False, "message": "Mixer not found"}), 400
 

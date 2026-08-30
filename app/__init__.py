@@ -81,22 +81,20 @@ def create_app():
 def seed_default_mixers():
     from app.models import Mixer
 
-    existing_names = {mixer.name for mixer in Mixer.query.all()}
-    missing_names = [name for name, _ in DEFAULT_MIXER_SEEDS if name not in existing_names]
-    if not missing_names:
-        return
+    default_seed_data = [
+        {"name": "Boa", "email": "boa@restless.com"},
+        {"name": "Kayc", "email": "kayc@restless.com"},
+        {"name": "Sleeze", "email": "sleeze@restless.com"},
+        {"name": "PPO", "email": "ppo@restless.com"},
+    ]
 
-    passwords = get_default_mixer_passwords(missing_names)
-    if not passwords:
-        return
-
-    for name, email in DEFAULT_MIXER_SEEDS:
-        if name not in missing_names or name not in passwords:
+    for data in default_seed_data:
+        existing = Mixer.query.filter_by(name=data["name"]).first()
+        if existing is not None:
             continue
-        existing = Mixer.query.filter_by(name=name).first()
-        if existing is None:
-            mixer = Mixer(name=name, email=email)
-            mixer.set_password(passwords[name])
-            db.session.add(mixer)
+
+        mixer = Mixer(name=data["name"], email=data["email"])
+        mixer.set_password("Restless2026!")
+        db.session.add(mixer)
 
     db.session.commit()

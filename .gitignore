@@ -1,7 +1,0 @@
-.env
-__pycache__/
-*.pyc
-*.db
-*.sqlite
-*.sqlite3
-mix-site/index.html.backup
