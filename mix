@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RESTLESS STUDIO | 24/7 Studio & Mix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0a0a0c;
+            --bg-card: #121216;
+            --accent-red: #ff2a4b;
+            --accent-glow: rgba(255, 42, 75, 0.4);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0ab;
+            --border-color: #22222a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Navbar */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 5%;
+            background: rgba(10, 10, 12, 0.9);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo {
+            font-weight: 900;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+            color: var(--text-primary);
+        }
+
+        .logo span {
+            color: var(--accent-red);
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-left: 20px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-red);
+        }
+
+        /* Hero Header */
+        header {
+            min-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 120px 20px 60px;
+            background: radial-gradient(circle at center, rgba(255, 42, 75, 0.15) 0%, transparent 70%);
+        }
+
+        .badge-247 {
+            background: var(--accent-red);
+            color: white;
+            font-weight: 900;
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 8vw, 5rem);
+            font-weight: 900;
+            letter-spacing: -1px;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: clamp(1rem, 2vw, 1.2rem);
+            max-width: 600px;
+            margin-bottom: 35px;
+        }
+
+        .btn-main {
+            display: inline-block;
+            background: var(--accent-red);
+            color: white;
+            padding: 16px 36px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 900;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            box-shadow: 0 0 25px var(--accent-glow);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-main:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 35px var(--accent-glow);
+        }
+
+        /* Container & Sections */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .section-title span {
+            color: var(--accent-red);
+        }
+
+        /* Grid Mixers */
+        .grid-mixers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 25px;
+        }
+
+        .card-mixer {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 30px 20px;
+            text-align: center;
+            position: relative;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .card-mixer:hover {
+            transform: translateY(-8px);
+            border-color: var(--accent-red);
+        }
+
+        .avatar-placeholder {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: #202028;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            border: 2px solid var(--accent-red);
+        }
+
+        .card-mixer h3 {
+            font-size: 1.4rem;
+            margin-bottom: 5px;
+        }
+
+        .card-mixer .role {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .insta-link {
+            display: inline-block;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            background: #1a1a22;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+
+        .insta-link:hover {
+            background: var(--accent-red);
+        }
+
+        /* Form section */
+        .booking-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 14px;
+            background: #0a0a0c;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--accent-red);
+        }
+
+        /* Location Card */
+        .location-info {
+            text-align: center;
+            margin-top: 50px;
+            padding: 30px;
+            background: rgba(255, 42, 75, 0.05);
+            border-radius: 12px;
+            border: 1px dashed var(--accent-red);
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo">RESTLESS<span>24.7</span></div>
+        <div class="nav-links">
+            <a href="#mixers">Équipe</a>
+            <a href="#booking">Booker</a>
+            <a href="#location">Studio</a>
+        </div>
+    </nav>
+
+    <header>
+        <div class="badge-247">OUVERT 24H/24 • 7J/7</div>
+        <h1>RESTLESS STUDIO</h1>
+        <p>Enregistrement, Mixage & Mastering sur mesure. Donne à tes projets le rendu professionnel qu'ils méritent.</p>
+        <a href="#booking" class="btn-main">Réserver une session</a>
+    </header>
+
+    <div class="container">
+        
+        <section id="mixers">
+            <h2 class="section-title">Les <span>Mixeurs</span></h2>
+            <div class="grid-mixers">
+                
+                <div class="card-mixer">
+                    <div class="avatar-placeholder">🎛️</div>
+                    <h3>Sleeze</h3>
+                    <p class="role">Ingénieur Mix & Master</p>
+                    <a href="https://www.instagram.com/slee.ze_/" target="_blank" class="insta-link">@slee.ze_</a>
+                </div>
+
+                <div class="card-mixer">
+                    <div class="avatar-placeholder">🎚️</div>
+                    <h3>Kayc</h3>
+                    <p class="role">Ingénieur Mix & Master</p>
+                    <a href="https://www.instagram.com/kaycmix/" target="_blank" class="insta-link">@kaycmix</a>
+                </div>
+
+                <div class="card-mixer">
+                    <div class="avatar-placeholder">🎧</div>
+                    <h3>PPO</h3>
+                    <p class="role">Ingénieur Mix & Master</p>
+                    <a href="https://www.instagram.com/mixedbyppo" target="_blank" class="insta-link">@mixedbyppo</a>
+                </div>
+
+                <div class="card-mixer">
+                    <div class="avatar-placeholder">🔊</div>
+                    <h3>Boa</h3>
+                    <p class="role">Ingénieur Mix & Master</p>
+                    <a href="https://www.instagram.com/boa_productionz/" target="_blank" class="insta-link">@boa_productionz</a>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="booking" style="margin-top: 100px;">
+            <h2 class="section-title">Réserver <span>Ta Session</span></h2>
+            <div class="booking-box">
+                <form action="#" method="post">
+                    <div class="form-group">
+                        <label for="artist">Nom d'artiste / Groupe</label>
+                        <input type="text" id="artist" placeholder="Ex: KILIK" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="contact">Téléphone ou Email</label>
+                        <input
