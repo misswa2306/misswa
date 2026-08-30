@@ -1,5 +1,6 @@
 import os
 import secrets
+import re
 from datetime import datetime
 
 from flask import Blueprint, current_app, redirect, request, session, url_for, jsonify
@@ -42,6 +43,12 @@ def build_oauth_flow():
     return flow
 
 
+def safe_oauth_error(exc):
+    message = str(exc)
+    message = re.sub(r"(code|client_secret|access_token|refresh_token)=[^&\s]+", r"\1=[redacted]", message, flags=re.IGNORECASE)
+    return message[:300]
+
+
 @google_bp.route("/google/connect")
 def connect_google():
     flow = build_oauth_flow()
@@ -63,6 +70,14 @@ def connect_google():
 
 @google_bp.route("/google/callback")
 def google_callback():
+    if request.args.get("error"):
+        current_app.logger.warning(
+            "Google OAuth returned an error: error_type=%s error_description_present=%s",
+            request.args.get("error"),
+            bool(request.args.get("error_description")),
+        )
+        return jsonify({"error": "Google OAuth authorization was not completed"}), 400
+
     state = request.args.get("state")
     if not state or state != session.get("oauth_state"):
         return jsonify({"error": "Invalid OAuth state"}), 400
@@ -73,9 +88,18 @@ def google_callback():
 
     flow = build_oauth_flow()
     try:
-        flow.fetch_token(code=code)
-    except Exception:
-        current_app.logger.exception("Google OAuth token exchange failed")
+        current_app.logger.info(
+            "Google OAuth token exchange started: redirect_uri_configured=%s code_present=%s",
+            flow.redirect_uri == os.environ.get("GOOGLE_REDIRECT_URI"),
+            bool(code),
+        )
+        flow.fetch_token(code=code, redirect_uri=flow.redirect_uri)
+    except Exception as exc:
+        current_app.logger.error(
+            "Google OAuth token exchange failed: error_type=%s safe_message=%s",
+            type(exc).__name__,
+            safe_oauth_error(exc),
+        )
         return jsonify({"error": "Google OAuth token exchange failed"}), 502
 
     credentials = flow.credentials
@@ -112,7 +136,7 @@ def google_callback():
         db.session.add(account)
 
     account.access_token = credentials.token
-    account.refresh_token = credentials.refresh_token
+    account.refresh_token = credentials.refresh_token or account.refresh_token
     account.token_expiry = credentials.expiry
     account.connected_at = datetime.utcnow()
     account.calendar_id = "primary"
