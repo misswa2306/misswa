@@ -104,6 +104,9 @@ class GoogleCalendarService:
 
     @staticmethod
     def window_datetimes(reservation_date, start_time, end_time):
+        if isinstance(reservation_date, str):
+            reservation_date = datetime.strptime(reservation_date, "%Y-%m-%d").date()
+
         start = datetime.combine(
             reservation_date,
             datetime.strptime(start_time, "%H:%M").time(),

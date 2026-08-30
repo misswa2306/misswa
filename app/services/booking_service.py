@@ -54,7 +54,8 @@ def validate_no_conflict(mixer_id, reservation_date, start_time, end_time, exclu
 
 
 def create_booking_from_payload(payload):
-    mixer = Mixer.query.filter_by(name=payload["mixer"]).first()
+    mixer_name = (payload.get("mixer") or "").strip()
+    mixer = Mixer.query.filter(Mixer.name.ilike(mixer_name)).first()
     if not mixer:
         return None, "Mixer not found"
 

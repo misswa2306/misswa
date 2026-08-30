@@ -22,7 +22,7 @@ def create_booking():
     mixer_name = (data.get("mixer") or "").strip()
     mixer = Mixer.query.filter(Mixer.name.ilike(mixer_name)).first()
     if not mixer:
-        return jsonify({"success": False, "message": "Mixer not found"}), 400
+        return jsonify({"success": False, "message": "Mixer non trouvé"}), 404
 
     available, _ = validate_no_conflict(
         mixer.id,
@@ -52,19 +52,24 @@ def create_booking():
 
     try:
         current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
-        event_id = calendar_service.create_event(booking, mixer=mixer)
+        try:
+            event_id = calendar_service.create_event(booking, mixer=mixer)
+        except TypeError as exc:
+            if "unexpected keyword argument 'mixer'" not in str(exc):
+                raise
+            event_id = calendar_service.create_event(booking)
         booking.google_calendar_event_id = event_id
         booking.google_sync_status = "synced"
         booking.last_google_error = None
         db.session.commit()
     except Exception as exc:
         current_app.logger.exception("Google Calendar event creation failed for booking_id=%s", booking.id)
-        booking.google_sync_status = "error"
+        booking.google_sync_status = "not_connected" if "not connected" in str(exc).lower() else "error"
         booking.last_google_error = str(exc)
         db.session.add(GoogleSyncLog(
             reservation_id=booking.id,
             action="create",
-            outcome="error",
+            outcome=booking.google_sync_status,
             message=str(exc),
         ))
         db.session.commit()

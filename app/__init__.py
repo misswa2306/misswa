@@ -71,11 +71,16 @@ def create_app():
             app.logger.exception("Database initialization failed during app startup: %s", exc)
 
         try:
-            seed_default_mixers()
+            seed_database(app)
         except Exception as exc:
             app.logger.exception("Default mixer seeding failed during app startup: %s", exc)
 
     return app
+
+
+def seed_database(app):
+    with app.app_context():
+        seed_default_mixers()
 
 
 def seed_default_mixers():
