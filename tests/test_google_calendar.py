@@ -110,6 +110,7 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertEqual(connect.status_code, 302)
         self.assertIn("accounts.google.com", connect.headers["Location"])
         self.assertEqual(callback.status_code, 302)
+        self.assertIn("/mixer/dashboard", callback.headers["Location"])
         self.assertEqual(flow.redirect_uri, "https://restless-24-7.onrender.com/google/callback")
         self.assertNotIn("redirect_uri", flow.fetch_token_kwargs)
         self.assertEqual(flow.authorization_kwargs["include_granted_scopes"], "false")
@@ -119,6 +120,7 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             mixer = Mixer.query.filter_by(name="Sleeze").one()
             self.assertTrue(mixer.google_access_token)
             self.assertTrue(mixer.google_refresh_token)
+            self.assertIsNotNone(mixer.google_token_expiry)
 
     def test_four_mixers_use_one_primary_calendar(self):
         with patch.object(booking_module := __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]), "GoogleCalendarService", FakeCalendarService):
@@ -222,14 +224,14 @@ class GoogleCalendarFlowTests(unittest.TestCase):
                 ))
                 db.session.commit()
             response = client.get("/google/callback?state=state&code=expired-code")
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.get_json(), {"error": "Google OAuth token exchange failed"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/mixer/dashboard", response.headers["Location"])
 
     def test_invalid_oauth_state_is_rejected(self):
         client = self.app.test_client()
         response = client.get("/google/callback?state=wrong-state&code=oauth-code")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {"error": "Invalid OAuth state"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/mixer/dashboard", response.headers["Location"])
 
     def test_duplicate_booking_is_rejected_as_conflict(self):
         with patch.object(

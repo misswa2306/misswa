@@ -3,7 +3,7 @@ import secrets
 import re
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, redirect, request, jsonify
+from flask import Blueprint, current_app, flash, redirect, request, jsonify, url_for
 from flask_login import current_user, login_required
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
@@ -51,100 +51,96 @@ def safe_oauth_error(exc):
 
 
 @google_bp.route("/google/connect")
+@google_bp.route("/google/login")
 @login_required
 def connect_google():
-    flow = build_oauth_flow()
-    state = secrets.token_urlsafe(32)
-    OAuthState.query.filter_by(mixer_id=current_user.id).delete()
-    db.session.add(OAuthState(
-        mixer_id=current_user.id,
-        state=state,
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
-    ))
-    db.session.commit()
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="false",
-        prompt="consent",
-        login_hint=current_user.email,
-        state=state,
-    )
-    current_app.logger.info(
-        "Google OAuth started: redirect_configured=%s admin_account_configured=%s",
-        bool(flow.redirect_uri),
-        bool(current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL")),
-    )
-    return redirect(auth_url)
+    try:
+        flow = build_oauth_flow()
+        state = secrets.token_urlsafe(32)
+        OAuthState.query.filter_by(mixer_id=current_user.id).delete()
+        db.session.add(OAuthState(
+            mixer_id=current_user.id,
+            state=state,
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+        ))
+        db.session.commit()
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="false",
+            prompt="consent",
+            login_hint=current_user.email,
+            state=state,
+        )
+        current_app.logger.info(
+            "Google OAuth started: mixer_id=%s redirect_configured=%s",
+            current_user.id,
+            bool(flow.redirect_uri),
+        )
+        return redirect(auth_url)
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("OAuth error: %s", exc, exc_info=True)
+        flash("La connexion Google Calendar a échoué. Veuillez réessayer.", "error")
+        return redirect(url_for("mixers.dashboard"))
 
 
 @google_bp.route("/google/callback")
 def google_callback():
-    if request.args.get("error"):
-        current_app.logger.warning(
-            "Google OAuth returned an error: error_type=%s error_description_present=%s",
-            request.args.get("error"),
-            bool(request.args.get("error_description")),
-        )
-        return jsonify({"error": "Google OAuth authorization was not completed"}), 400
-
-    state = request.args.get("state")
-    oauth_state = OAuthState.query.filter_by(state=state).first() if state else None
-    if not oauth_state or oauth_state.expires_at < datetime.utcnow():
-        return jsonify({"error": "Invalid OAuth state"}), 400
-    mixer = Mixer.query.get(oauth_state.mixer_id)
-    db.session.delete(oauth_state)
-    db.session.commit()
-    if not mixer:
-        return jsonify({"error": "Mixer not found"}), 404
-
-    code = request.args.get("code")
-    if not code:
-        return jsonify({"error": "Missing OAuth code"}), 400
-
-    flow = build_oauth_flow()
     try:
+        if request.args.get("error"):
+            raise RuntimeError("Google authorization was not completed")
+
+        state = request.args.get("state")
+        oauth_state = OAuthState.query.filter_by(state=state).first() if state else None
+        if not oauth_state or oauth_state.expires_at < datetime.utcnow():
+            raise RuntimeError("Invalid OAuth state")
+
+        mixer = Mixer.query.get(oauth_state.mixer_id)
+        if not mixer:
+            raise RuntimeError("Mixer not found")
+
+        code = request.args.get("code")
+        if not code:
+            raise RuntimeError("Missing OAuth code")
+
+        flow = build_oauth_flow()
         current_app.logger.info(
             "Google OAuth token exchange started: redirect_uri_configured=%s code_present=%s",
             flow.redirect_uri == current_app.config.get("GOOGLE_REDIRECT_URI"),
             bool(code),
         )
         flow.fetch_token(code=code)
-    except Exception as exc:
-        current_app.logger.error(
-            "Google OAuth token exchange failed: error_type=%s safe_message=%s",
-            type(exc).__name__,
-            safe_oauth_error(exc),
-        )
-        return jsonify({"error": "Google OAuth token exchange failed"}), 502
 
-    credentials = flow.credentials
-    try:
+        credentials = flow.credentials
         claims = id_token.verify_oauth2_token(
             credentials.id_token,
             google_requests.Request(),
             os.environ.get("GOOGLE_CLIENT_ID"),
         )
-    except Exception:
-        current_app.logger.exception("Google OAuth identity verification failed")
-        return jsonify({"error": "Google account identity could not be verified"}), 502
 
-    current_app.logger.info(
-        "Google OAuth callback verified: mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
-        mixer.id,
-        bool(claims.get("email")),
-        bool(credentials.token),
-        bool(credentials.refresh_token),
-    )
+        current_app.logger.info(
+            "Google OAuth callback verified: mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
+            mixer.id,
+            bool(claims.get("email")),
+            bool(credentials.token),
+            bool(credentials.refresh_token),
+        )
 
-    mixer.google_access_token = credentials.token
-    mixer.google_refresh_token = credentials.refresh_token or mixer.google_refresh_token
-    mixer.google_token_expiry = credentials.expiry
-    mixer.google_calendar_id = "primary"
-    mixer.google_calendar_connected = True
-    mixer.connected_at = datetime.utcnow()
-    db.session.commit()
-
-    return redirect("/")
+        mixer.google_access_token = credentials.token
+        mixer.google_refresh_token = credentials.refresh_token or mixer.google_refresh_token
+        mixer.google_token_expiry = credentials.expiry
+        mixer.google_calendar_id = "primary"
+        mixer.google_calendar_connected = True
+        mixer.connected_at = datetime.utcnow()
+        db.session.delete(oauth_state)
+        db.session.commit()
+        flash("Google Calendar connecté.", "success")
+        return redirect(url_for("mixers.dashboard"))
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("OAuth error: %s", exc, exc_info=True)
+        flash("La connexion Google Calendar a échoué. Veuillez réessayer.", "error")
+        return redirect(url_for("mixers.dashboard"))
 
 
 @google_bp.route("/google/disconnect", methods=["POST"])
