@@ -800,7 +800,7 @@ am
         }
 
         .progress-wrap {
-            display: none;
+            display: flex;
             align-items: center;
             gap: 12px;
             min-width: 0;
@@ -808,6 +808,7 @@ am
         }
 
         .timecode {
+            display: none;
             color: var(--text-muted);
             font-size: 0.72rem;
             letter-spacing: 0.08em;
@@ -820,31 +821,32 @@ am
             width: 100%;
             appearance: none;
             -webkit-appearance: none;
-            height: 5px;
+            height: 6px;
             border-radius: 999px;
-            background: linear-gradient(90deg, rgba(168, 85, 247, 0.95) 0%, rgba(168, 85, 247, 0.95) var(--value, 0%), rgba(255,255,255,0.16) var(--value, 0%), rgba(255,255,255,0.16) 100%);
+            background: linear-gradient(90deg, #a855f7 0%, #a855f7 var(--value, 0%), rgba(168, 85, 247, 0.2) var(--value, 0%), rgba(168, 85, 247, 0.2) 100%);
             cursor: pointer;
             margin: 0;
             outline: none;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
         }
 
         .seek-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
-            background: #d8b4fe;
-            border: 2px solid rgba(168, 85, 247, 0.8);
-            box-shadow: 0 0 0 5px rgba(168, 85, 247, 0.14);
+            background: #c7b3ff;
+            border: 2px solid #a855f7;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.6), 0 0 0 8px rgba(168, 85, 247, 0.1);
         }
 
         .seek-slider::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(168, 85, 247, 0.8);
+            width: 16px;
+            height: 16px;
+            border: 2px solid #a855f7;
             border-radius: 50%;
-            background: #d8b4fe;
-            box-shadow: 0 0 0 5px rgba(168, 85, 247, 0.14);
+            background: #c7b3ff;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.6), 0 0 0 8px rgba(168, 85, 247, 0.1);
         }
 
         .progress-fill {
