@@ -187,6 +187,14 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         static = client.get("/static/logo.png")
         self.assertEqual(static.status_code, 200)
         self.assertEqual(static.mimetype, "image/png")
+        for audio_path in [
+            "/static/K1ME%20x%20WAZI%20x%20MINO-%20LOVAS.mp3",
+            "/static/GAKO%20-%20CHEMIN.mp3",
+            "/static/SORRY.mp3",
+        ]:
+            audio = client.get(audio_path)
+            self.assertEqual(audio.status_code, 200, msg=audio_path)
+            self.assertEqual(audio.mimetype, "audio/mpeg", msg=audio_path)
 
     def test_dynamic_booking_rules_against_montreal_timezone(self):
         with patch.object(
@@ -456,6 +464,9 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertIn("refreshAvailability();", html)
         self.assertIn("button.disabled = disabled", html)
         self.assertIn("src=\"/static/logo.png\"", html)
+        self.assertIn("src=\"/static/K1ME%20x%20WAZI%20x%20MINO-%20LOVAS.mp3\"", html)
+        self.assertIn("src=\"/static/GAKO%20-%20CHEMIN.mp3\"", html)
+        self.assertIn("src=\"/static/SORRY.mp3\"", html)
 
     def test_missing_google_account_keeps_booking_saved(self):
         with self.app.app_context():
