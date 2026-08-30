@@ -23,9 +23,12 @@ GOOGLE_SCOPES = [
 
 
 def build_oauth_flow():
-    redirect_uri = current_app.config.get("GOOGLE_REDIRECT_URI", "").strip()
-    client_id = os.environ.get("GOOGLE_CLIENT_ID")
-    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+    redirect_uri = os.getenv(
+        "GOOGLE_REDIRECT_URI",
+        "https://restless-24-7.onrender.com/google/callback",
+    ).strip()
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
     if not redirect_uri or not client_id or not client_secret:
         raise RuntimeError("Google OAuth credentials are not configured")
 
@@ -99,7 +102,7 @@ def standalone_google_login():
     except Exception as exc:
         db.session.rollback()
         current_app.logger.error("OAuth error: %s", exc, exc_info=True)
-        return "Google Calendar Master connection failed.", 500
+        return f"Erreur de configuration OAuth : {safe_oauth_error(exc)}", 500
 
 
 @google_bp.route("/google/callback")
