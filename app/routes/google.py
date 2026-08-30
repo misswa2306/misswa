@@ -94,7 +94,7 @@ def google_callback():
             flow.redirect_uri == current_app.config.get("GOOGLE_REDIRECT_URI"),
             bool(code),
         )
-        flow.fetch_token(code=code, redirect_uri=flow.redirect_uri)
+        flow.fetch_token(code=code)
     except Exception as exc:
         current_app.logger.error(
             "Google OAuth token exchange failed: error_type=%s safe_message=%s",

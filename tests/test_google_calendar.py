@@ -22,13 +22,14 @@ class FakeFlow:
     redirect_uri = "https://restless-24-7.onrender.com/google/callback"
     credentials = FakeCredentials()
     exchanged_redirect_uri = None
+    fetch_token_kwargs = None
 
     def authorization_url(self, **kwargs):
         self.state = kwargs["state"]
         return "https://accounts.google.com/o/oauth2/auth?state=hidden", None
 
-    def fetch_token(self, code, redirect_uri=None):
-        self.exchanged_redirect_uri = redirect_uri
+    def fetch_token(self, code, **kwargs):
+        self.fetch_token_kwargs = kwargs
         if code == "expired-code":
             raise ValueError("invalid_grant: code expired")
 
@@ -90,7 +91,8 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertEqual(connect.status_code, 302)
         self.assertIn("accounts.google.com", connect.headers["Location"])
         self.assertEqual(callback.status_code, 302)
-        self.assertEqual(flow.exchanged_redirect_uri, "https://restless-24-7.onrender.com/google/callback")
+        self.assertEqual(flow.redirect_uri, "https://restless-24-7.onrender.com/google/callback")
+        self.assertNotIn("redirect_uri", flow.fetch_token_kwargs)
         with self.app.app_context():
             account = GoogleCalendarAccount.query.one()
             self.assertTrue(account.access_token)
