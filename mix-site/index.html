@@ -1912,6 +1912,33 @@
             return best ? best.value : null;
         }
 
+        function resetTimeSlotsUI(occupied = currentOccupied) {
+            document.querySelectorAll('.time-card').forEach((button) => {
+                const timeValue = button.dataset.time || button.textContent;
+                const valueMinutes = diffMinutes('00:00', timeValue);
+                const isActuallyBooked = occupied.some((booking) => {
+                    const bookingStart = diffMinutes('00:00', booking.start_time);
+                    const bookingEnd = diffMinutes('00:00', booking.end_time);
+                    return valueMinutes >= bookingStart && valueMinutes < bookingEnd;
+                });
+
+                button.disabled = isActuallyBooked;
+                button.classList.toggle('is-disabled', isActuallyBooked);
+                button.classList.remove('is-selected');
+            });
+        }
+
+        function onStartTimeSelect(selectedStart, occupied = currentOccupied) {
+            resetTimeSlotsUI(occupied);
+            document.querySelectorAll('#endGrid .time-card').forEach((button) => {
+                const timeValue = button.dataset.time || button.textContent;
+                if (diffMinutes('00:00', timeValue) <= diffMinutes('00:00', selectedStart)) {
+                    button.disabled = true;
+                    button.classList.add('is-disabled');
+                }
+            });
+        }
+
         function buildTimeGrid(containerId, selectedValue, type, occupied) {
             const container = document.getElementById(containerId);
             const options = [];
@@ -1944,6 +1971,7 @@
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'time-card';
+                button.dataset.time = value;
                 if (value === selectedValue) button.classList.add('is-selected');
                 button.disabled = disabled;
                 if (disabled) button.classList.add('is-disabled');
@@ -1956,6 +1984,7 @@
                         const nextStart = value;
                         const proposedEnd = getNearestValidEnd(nextStart, occupied);
                         if (!proposedEnd) return;
+                        onStartTimeSelect(nextStart, occupied);
                         startTime.value = nextStart;
                         endTime.value = proposedEnd;
                         renderTimeGrids(occupied);
@@ -1976,6 +2005,7 @@
                         return;
                     }
 
+                    resetTimeSlotsUI(occupied);
                     endTime.value = value;
                     renderTimeGrids(occupied);
                     updateSummary();
