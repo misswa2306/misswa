@@ -1909,7 +1909,7 @@
                 })
                 .sort((a, b) => Math.abs((Number(a.value.split(':')[0]) * 60 + Number(a.value.split(':')[1])) - startMinutes) - Math.abs((Number(b.value.split(':')[0]) * 60 + Number(b.value.split(':')[1])) - startMinutes))[0];
 
-            return best ? best.value : '12:00';
+            return best ? best.value : null;
         }
 
         function buildTimeGrid(containerId, selectedValue, type, occupied) {
@@ -1971,17 +1971,13 @@
                         const nearestEnd = getNearestValidEnd(selectedStart, occupied);
                         if (!nearestEnd) return;
                         endTime.value = nearestEnd;
-                        document.querySelectorAll('#endGrid .time-card').forEach((item) => {
-                            item.classList.remove('is-selected');
-                            if (item.textContent === nearestEnd) item.classList.add('is-selected');
-                        });
+                        renderTimeGrids(occupied);
                         updateSummary();
                         return;
                     }
 
                     endTime.value = value;
-                    document.querySelectorAll('#endGrid .time-card').forEach((item) => item.classList.remove('is-selected'));
-                    this.classList.add('is-selected');
+                    renderTimeGrids(occupied);
                     updateSummary();
                 });
                 container.appendChild(button);
@@ -2180,6 +2176,7 @@
             });
             updateSummary();
             renderCalendar();
+            refreshAvailability();
 
             setTimeout(() => {
                 success.style.display = 'none';
