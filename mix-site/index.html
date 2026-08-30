@@ -1757,8 +1757,8 @@ am
             return hours + 'h' + minutes;
         }
 
-        const validSessionDurations = [30, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720];
-        // Allow durations: 30min, 1h, 1h30, 2h, 3h, 4h, 5h, 6h, 8h, 10h, 12h
+        const validSessionDurations = [120, 180, 240, 300, 360, 420, 480, 540, 600, 720];
+        // Allow durations: 2h, 3h, 4h, 5h, 6h, 7h, 8h, 9h, 10h, 12h (minimum 2h)
 
         function updateSummary() {
             const startValue = startTime.value || '10:00';
