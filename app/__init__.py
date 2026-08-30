@@ -40,7 +40,7 @@ def get_default_mixer_passwords(required_names=None):
 
 
 def create_app():
-    app = Flask(__name__, static_folder="../mix-site", template_folder="../mix-site")
+    app = Flask(__name__, static_folder="../mix-site", template_folder="../mix-site", static_url_path="/static")
     app.config.from_object(Config)
 
     db.init_app(app)

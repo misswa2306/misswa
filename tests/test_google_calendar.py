@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id")
@@ -177,6 +178,187 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             second = client.post("/api/bookings", json=payload)
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 409)
+
+    def test_logo_is_served_from_static_route(self):
+        client = self.app.test_client()
+        root = client.get("/")
+        self.assertEqual(root.status_code, 200)
+        self.assertIn("/static/logo.png", root.get_data(as_text=True))
+        static = client.get("/static/logo.png")
+        self.assertEqual(static.status_code, 200)
+        self.assertEqual(static.mimetype, "image/png")
+
+    def test_dynamic_booking_rules_against_montreal_timezone(self):
+        with patch.object(
+            __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]),
+            "GoogleCalendarService",
+            FakeCalendarService,
+        ):
+            client = self.app.test_client()
+            now_mt = datetime.now(ZoneInfo("America/Montreal"))
+
+            def date_offset(days):
+                return (now_mt + timedelta(days=days)).date().isoformat()
+
+            def time_offset(minutes):
+                return (now_mt + timedelta(minutes=minutes)).strftime("%H:%M")
+
+            rejected_dates = [date_offset(-1), date_offset(-7), date_offset(-30)]
+            for booking_date in rejected_dates:
+                response = client.post("/api/bookings", json={
+                    "artist": "Past Client",
+                    "contact": "past@example.com",
+                    "service": "Mix",
+                    "mixer": "Sleeze",
+                    "booking_date": booking_date,
+                    "start_time": "18:00",
+                    "end_time": "20:00",
+                })
+                self.assertEqual(response.status_code, 409, msg=f"Past date {booking_date} should be rejected")
+
+            today = date_offset(0)
+            past_time = time_offset(-90)
+            response = client.post("/api/bookings", json={
+                "artist": "Today Past Client",
+                "contact": "past@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": today,
+                "start_time": past_time,
+                "end_time": time_offset(30),
+            })
+            self.assertEqual(response.status_code, 409, msg="Same-day past time should be rejected")
+
+            tomorrow = date_offset(1)
+            future_response = client.post("/api/bookings", json={
+                "artist": "Future Client",
+                "contact": "future@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": tomorrow,
+                "start_time": "15:00",
+                "end_time": "17:00",
+            })
+            self.assertEqual(future_response.status_code, 201, msg="Future booking should be accepted")
+
+            first = client.post("/api/bookings", json={
+                "artist": "Slot Client",
+                "contact": "slot@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": date_offset(2),
+                "start_time": "15:00",
+                "end_time": "17:00",
+            })
+            self.assertEqual(first.status_code, 201)
+
+            rejected_overlaps = [
+                ("14:00", "16:00"),
+                ("15:00", "16:00"),
+                ("16:00", "17:00"),
+                ("16:30", "18:00"),
+                ("15:30", "18:00"),
+                ("16:00", "16:30"),
+            ]
+            for start_time, end_time in rejected_overlaps:
+                response = client.post("/api/bookings", json={
+                    "artist": "Overlap Client",
+                    "contact": "overlap@example.com",
+                    "service": "Mix",
+                    "mixer": "Sleeze",
+                    "booking_date": date_offset(2),
+                    "start_time": start_time,
+                    "end_time": end_time,
+                })
+                self.assertEqual(response.status_code, 409, msg=f"Overlap {start_time}-{end_time} should be rejected")
+
+            accepted_after = client.post("/api/bookings", json={
+                "artist": "After Client",
+                "contact": "after@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": date_offset(2),
+                "start_time": "17:00",
+                "end_time": "19:00",
+            })
+            self.assertEqual(accepted_after.status_code, 201, msg="Exact end-to-start slot should be accepted")
+
+            other_mixer = client.post("/api/bookings", json={
+                "artist": "Other Mixer Client",
+                "contact": "other@example.com",
+                "service": "Mix",
+                "mixer": "Kayc",
+                "booking_date": date_offset(2),
+                "start_time": "15:00",
+                "end_time": "17:00",
+            })
+            self.assertEqual(other_mixer.status_code, 201, msg="Same slot on a different mixer should be accepted")
+
+            for mixer_name in ["Sleeze", "Kayc", "PPO", "Boa"]:
+                response = client.post("/api/bookings", json={
+                    "artist": f"Mixer {mixer_name}",
+                    "contact": "mixer@example.com",
+                    "service": "Mix",
+                    "mixer": mixer_name,
+                    "booking_date": date_offset(10 + ["Sleeze", "Kayc", "PPO", "Boa"].index(mixer_name)),
+                    "start_time": "18:00",
+                    "end_time": "20:00",
+                })
+                self.assertEqual(response.status_code, 201, msg=f"{mixer_name} should accept a future booking")
+
+    def test_simultaneous_duplicate_booking_only_accepts_one(self):
+        with patch.object(
+            __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]),
+            "GoogleCalendarService",
+            FakeCalendarService,
+        ):
+            client = self.app.test_client()
+            booking_date = (datetime.now(ZoneInfo("America/Montreal")) + timedelta(days=3)).date().isoformat()
+            payload = {
+                "artist": "Concurrent Client",
+                "contact": "concurrent@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": booking_date,
+                "start_time": "16:00",
+                "end_time": "18:00",
+            }
+            first = client.post("/api/bookings", json=payload)
+            second = client.post("/api/bookings", json=payload)
+            self.assertEqual(first.status_code, 201)
+            self.assertEqual(second.status_code, 409)
+
+    def test_rejected_bookings_do_not_create_google_events_and_accepted_ones_do(self):
+        with patch.object(
+            __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]),
+            "GoogleCalendarService",
+            FakeCalendarService,
+        ):
+            client = self.app.test_client()
+            future_date = (datetime.now(ZoneInfo("America/Montreal")) + timedelta(days=5)).date().isoformat()
+            accepted = client.post("/api/bookings", json={
+                "artist": "Accepted Sync Client",
+                "contact": "sync@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": future_date,
+                "start_time": "18:00",
+                "end_time": "20:00",
+            })
+            self.assertEqual(accepted.status_code, 201)
+            self.assertEqual(len(FakeCalendarService.events), 1)
+
+            rejected = client.post("/api/bookings", json={
+                "artist": "Rejected Sync Client",
+                "contact": "reject@example.com",
+                "service": "Mix",
+                "mixer": "Sleeze",
+                "booking_date": future_date,
+                "start_time": "18:30",
+                "end_time": "19:30",
+            })
+            self.assertEqual(rejected.status_code, 409)
+            self.assertEqual(len(FakeCalendarService.events), 1)
 
 
 if __name__ == "__main__":

@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RESTLESS STUDIO | 24/7 Studio & Mix</title>
-    <link rel="icon" type="image/png" href="logo.png">
-    <link rel="shortcut icon" type="image/png" href="logo.png">
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="shortcut icon" type="image/png" href="/static/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
@@ -1266,11 +1266,11 @@ am
     <nav class="site-nav">
         <div class="container nav-inner">
             <a href="#top" class="navbar-brand" aria-label="Restless Studio home">
-                <img src="LOGO 2.jpg" alt="Restless Studio" class="nav-logo" onerror="this.onerror=null;this.src='logo.png';">
+                <img src="/static/logo.png" alt="Restless Studio" class="nav-logo" onerror="this.onerror=null;this.src='/static/logo.png';">
             </a>
 
             <button class="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false">
-                ☰
+                    &#9776;
             </button>
 
             <div class="nav-menu" id="navMenu">
@@ -1786,8 +1786,22 @@ am
             return value < 10 ? '0' + value : String(value);
         }
 
+        function getMontrealDateParts(date = new Date()) {
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Montreal',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+            const [year, month, day] = formatter.formatToParts(date)
+                .filter((part) => part.type !== 'literal')
+                .map((part) => part.value);
+            return { year: Number(year), month: Number(month), day: Number(day) };
+        }
+
         function toDateKey(date) {
-            return date.toISOString().split('T')[0];
+            const { year, month, day } = getMontrealDateParts(date);
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         }
 
         function diffMinutes(start, end) {
@@ -1837,7 +1851,12 @@ am
         function buildTimeGrid(containerId, selectedValue, type) {
             const container = document.getElementById(containerId);
             const options = [];
+            const todayDateKey = toDateKey(new Date());
+            const isTodaySelection = selectedDate.value === todayDateKey;
+            const currentHour = new Date().getHours();
+
             for (let hour = 0; hour <= 23; hour++) {
+                if (isTodaySelection && hour <= currentHour) continue;
                 options.push(pad(hour) + ':00');
             }
 
@@ -1898,6 +1917,7 @@ am
             const lastDay = new Date(year, month + 1, 0);
             const startOffset = firstDay.getDay();
             const totalDays = lastDay.getDate();
+            const today = getMontrealDateParts(new Date());
             const monthName = firstDay.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
             monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
 
@@ -1916,15 +1936,41 @@ am
                 button.className = 'calendar-day';
                 button.textContent = day;
                 button.dataset.date = toDateKey(date);
+                const dateKey = toDateKey(date);
+                const dateParts = getMontrealDateParts(date);
+                const isPastDate = dateParts.year < today.year ||
+                    (dateParts.year === today.year && dateParts.month < today.month) ||
+                    (dateParts.year === today.year && dateParts.month === today.month && dateParts.day < today.day);
+
+                if (isPastDate) {
+                    button.disabled = true;
+                    button.classList.add('muted');
+                }
 
                 if (selectedDate.value && selectedDate.value === button.dataset.date) {
                     button.classList.add('is-selected');
                 }
 
                 button.addEventListener('click', function () {
+                    if (this.disabled) return;
                     document.querySelectorAll('.calendar-day').forEach((item) => item.classList.remove('is-selected'));
                     this.classList.add('is-selected');
                     selectedDate.value = this.dataset.date;
+                    const selectedDateValue = this.dataset.date;
+                    const isToday = selectedDateValue === toDateKey(new Date());
+                    const currentHour = new Date().getHours();
+                    if (isToday) {
+                        const validTimes = [];
+                        for (let hour = 0; hour <= 23; hour++) {
+                            if (hour > currentHour) validTimes.push(pad(hour) + ':00');
+                        }
+                        if (!validTimes.includes(startTime.value)) {
+                            startTime.value = validTimes[0] || '10:00';
+                        }
+                        if (!validTimes.includes(endTime.value) || diffMinutes(startTime.value, endTime.value) <= 0) {
+                            endTime.value = validTimes.length > 1 ? validTimes[1] : '12:00';
+                        }
+                    }
                 });
 
                 calendarDays.appendChild(button);
