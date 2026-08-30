@@ -36,7 +36,19 @@ def create_booking():
     if error:
         return jsonify({"success": False, "message": error}), 409
 
-    account = GoogleCalendarService.get_shared_account()
+    try:
+        account = GoogleCalendarService.get_shared_account()
+    except RuntimeError as exc:
+        current_app.logger.error("Booking sync configuration error: error_type=%s message=%s", type(exc).__name__, str(exc))
+        booking.status = "pending"
+        booking.google_sync_status = "configuration_error"
+        booking.last_google_error = str(exc)
+        db.session.commit()
+        return jsonify({
+            "success": False,
+            "message": "Reservation saved, but Google Calendar is not configured.",
+            "booking_id": booking.id,
+        }), 503
     if not account or not account.access_token:
         current_app.logger.warning(
             "Booking sync stopped: shared Google account unavailable email_configured=%s mixer_id=%s booking_id=%s",

@@ -22,10 +22,10 @@ GOOGLE_SCOPES = [
 
 
 def build_oauth_flow():
-    redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/google/callback")
+    redirect_uri = current_app.config.get("GOOGLE_REDIRECT_URI", "").strip()
     client_id = os.environ.get("GOOGLE_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-    if not client_id or not client_secret:
+    if not redirect_uri or not client_id or not client_secret:
         raise RuntimeError("Google OAuth credentials are not configured")
 
     client_config = {
@@ -81,6 +81,7 @@ def google_callback():
     state = request.args.get("state")
     if not state or state != session.get("oauth_state"):
         return jsonify({"error": "Invalid OAuth state"}), 400
+    session.pop("oauth_state", None)
 
     code = request.args.get("code")
     if not code:
@@ -90,7 +91,7 @@ def google_callback():
     try:
         current_app.logger.info(
             "Google OAuth token exchange started: redirect_uri_configured=%s code_present=%s",
-            flow.redirect_uri == os.environ.get("GOOGLE_REDIRECT_URI"),
+            flow.redirect_uri == current_app.config.get("GOOGLE_REDIRECT_URI"),
             bool(code),
         )
         flow.fetch_token(code=code, redirect_uri=flow.redirect_uri)
