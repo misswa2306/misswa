@@ -1800,6 +1800,7 @@
         const mixerSelect = document.getElementById('mixer');
         let mixerIds = {};
         let availabilityRequestId = 0;
+        let currentOccupied = [];
 
         document.querySelectorAll('.team-book').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -1880,7 +1881,18 @@
             timeSummary.textContent = 'Session : ' + startValue + ' - ' + endValue + ' • ' + durationText;
         }
 
-        function getNearestValidEnd(startValue) {
+        function intervalIsAvailable(startValue, endValue, occupied = currentOccupied) {
+            const startMinutes = diffMinutes('00:00', startValue);
+            const endMinutes = diffMinutes('00:00', endValue);
+            if (endMinutes <= startMinutes) return false;
+            return !occupied.some((booking) => {
+                const bookingStart = diffMinutes('00:00', booking.start_time);
+                const bookingEnd = diffMinutes('00:00', booking.end_time);
+                return startMinutes < bookingEnd && bookingStart < endMinutes;
+            });
+        }
+
+        function getNearestValidEnd(startValue, occupied = currentOccupied) {
             const startMinutes = Number(startValue.split(':')[0]) * 60 + Number(startValue.split(':')[1]);
             const candidates = validSessionDurations.map((duration) => {
                 const endMinutes = (startMinutes + duration) % (24 * 60);
@@ -1893,7 +1905,7 @@
             const best = candidates
                 .filter((candidate) => {
                     const endMinutes = Number(candidate.value.split(':')[0]) * 60 + Number(candidate.value.split(':')[1]);
-                    return endMinutes > startMinutes;
+                    return endMinutes > startMinutes && intervalIsAvailable(startValue, candidate.value, occupied);
                 })
                 .sort((a, b) => Math.abs((Number(a.value.split(':')[0]) * 60 + Number(a.value.split(':')[1])) - startMinutes) - Math.abs((Number(b.value.split(':')[0]) * 60 + Number(b.value.split(':')[1])) - startMinutes))[0];
 
@@ -1917,7 +1929,15 @@
                     const bookingEnd = diffMinutes('00:00', booking.end_time);
                     return valueMinutes >= bookingStart && valueMinutes < bookingEnd;
                 });
-                if (!isPast) options.push({ value, disabled: isOccupied });
+                let intervalUnavailable = false;
+                if (type === 'start') {
+                    intervalUnavailable = !getNearestValidEnd(value, occupied);
+                } else {
+                    const selectedStart = startTime.value || '10:00';
+                    intervalUnavailable = !intervalIsAvailable(selectedStart, value, occupied)
+                        || !validSessionDurations.includes(diffMinutes(selectedStart, value));
+                }
+                if (!isPast) options.push({ value, disabled: isOccupied || intervalUnavailable });
             }
 
             options.forEach(({ value, disabled }) => {
@@ -1934,15 +1954,11 @@
 
                     if (type === 'start') {
                         const nextStart = value;
-                        const proposedEnd = getNearestValidEnd(nextStart);
+                        const proposedEnd = getNearestValidEnd(nextStart, occupied);
+                        if (!proposedEnd) return;
                         startTime.value = nextStart;
                         endTime.value = proposedEnd;
-                        document.querySelectorAll('#startGrid .time-card').forEach((item) => item.classList.remove('is-selected'));
-                        document.querySelectorAll('#endGrid .time-card').forEach((item) => {
-                            item.classList.remove('is-selected');
-                            if (item.textContent === proposedEnd) item.classList.add('is-selected');
-                        });
-                        this.classList.add('is-selected');
+                        renderTimeGrids(occupied);
                         updateSummary();
                         return;
                     }
@@ -1951,8 +1967,9 @@
                     const selectedEnd = value;
                     const duration = diffMinutes(selectedStart, selectedEnd);
 
-                    if (!validSessionDurations.includes(duration)) {
-                        const nearestEnd = getNearestValidEnd(selectedStart);
+                    if (!validSessionDurations.includes(duration) || !intervalIsAvailable(selectedStart, selectedEnd, occupied)) {
+                        const nearestEnd = getNearestValidEnd(selectedStart, occupied);
+                        if (!nearestEnd) return;
                         endTime.value = nearestEnd;
                         document.querySelectorAll('#endGrid .time-card').forEach((item) => {
                             item.classList.remove('is-selected');
@@ -1971,6 +1988,14 @@
             });
         }
 
+        function renderTimeGrids(occupied) {
+            currentOccupied = occupied;
+            document.getElementById('startGrid').innerHTML = '';
+            document.getElementById('endGrid').innerHTML = '';
+            buildTimeGrid('startGrid', startTime.value, 'start', occupied);
+            buildTimeGrid('endGrid', endTime.value, 'end', occupied);
+        }
+
         async function refreshAvailability() {
             const requestId = ++availabilityRequestId;
             const mixerId = mixerIds[mixerSelect.value];
@@ -1981,16 +2006,10 @@
                 const result = await response.json();
                 if (!response.ok || requestId !== availabilityRequestId) return;
                 const occupied = result.occupied || [];
-                document.getElementById('startGrid').innerHTML = '';
-                document.getElementById('endGrid').innerHTML = '';
-                buildTimeGrid('startGrid', startTime.value, 'start', occupied);
-                buildTimeGrid('endGrid', endTime.value, 'end', occupied);
+                renderTimeGrids(occupied);
             } catch (error) {
                 if (requestId !== availabilityRequestId) return;
-                document.getElementById('startGrid').innerHTML = '';
-                document.getElementById('endGrid').innerHTML = '';
-                buildTimeGrid('startGrid', startTime.value, 'start', []);
-                buildTimeGrid('endGrid', endTime.value, 'end', []);
+                renderTimeGrids([]);
             }
         }
 
@@ -2085,10 +2104,9 @@
         selectedDate.value = toDateKey(new Date());
         renderCalendar();
         loadMixersAndAvailability().catch(() => {
-            document.getElementById('startGrid').innerHTML = '';
-            document.getElementById('endGrid').innerHTML = '';
-            buildTimeGrid('startGrid', '10:00', 'start', []);
-            buildTimeGrid('endGrid', '12:00', 'end', []);
+            startTime.value = '10:00';
+            endTime.value = '12:00';
+            renderTimeGrids([]);
         });
         mixerSelect.addEventListener('change', refreshAvailability);
 
@@ -2102,7 +2120,7 @@
             const bookingStart = startTime.value || '10:00';
             const bookingEnd = endTime.value || '12:00';
             const duration = diffMinutes(bookingStart, bookingEnd);
-            if (!validSessionDurations.includes(duration)) {
+            if (!validSessionDurations.includes(duration) || !intervalIsAvailable(bookingStart, bookingEnd)) {
                 alert('La session doit durer 2h ou plus.');
                 return;
             }
