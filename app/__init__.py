@@ -13,14 +13,28 @@ DEFAULT_MIXER_SEEDS = [
 ]
 
 
-def get_default_mixer_passwords():
+def get_default_mixer_passwords(required_names=None):
+    required_names = set(required_names) if required_names is not None else {
+        name for name, _ in DEFAULT_MIXER_SEEDS
+    }
     passwords = {}
+    missing = []
 
     for name, _ in DEFAULT_MIXER_SEEDS:
+        if name not in required_names:
+            continue
         env_name = f"MIXER_{name.upper().replace(' ', '_').replace('-', '_')}_PASSWORD"
         password = os.getenv(env_name, "").strip()
-        if password:
+        if not password:
+            missing.append(env_name)
+        else:
             passwords[name] = password
+
+    if missing:
+        raise RuntimeError(
+            "Missing required mixer bootstrap environment variables: "
+            + ", ".join(missing)
+        )
 
     return passwords
 
@@ -62,19 +76,20 @@ def create_app():
 def seed_default_mixers():
     from app.models import Mixer
 
-    passwords = get_default_mixer_passwords()
-    if not passwords:
+    existing_names = {mixer.name for mixer in Mixer.query.all()}
+    missing_names = [name for name, _ in DEFAULT_MIXER_SEEDS if name not in existing_names]
+    if not missing_names:
         return
 
-    for name, email in DEFAULT_MIXER_SEEDS:
-        password = passwords.get(name)
-        if password is None:
-            continue
+    passwords = get_default_mixer_passwords(missing_names)
 
+    for name, email in DEFAULT_MIXER_SEEDS:
+        if name not in missing_names:
+            continue
         existing = Mixer.query.filter_by(name=name).first()
         if existing is None:
             mixer = Mixer(name=name, email=email)
-            mixer.set_password(password)
+            mixer.set_password(passwords[name])
             db.session.add(mixer)
 
     db.session.commit()

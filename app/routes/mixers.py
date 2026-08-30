@@ -1,7 +1,8 @@
-from flask import Blueprint, jsonify, render_template_string
+from flask import Blueprint, jsonify, render_template_string, request
 from flask_login import login_required, current_user
 
 from app.models import Mixer
+from app.services.booking_service import validate_no_conflict
 
 mixers_bp = Blueprint("mixers", __name__)
 
@@ -35,3 +36,41 @@ def list_mixers():
         }
         for m in mix
     ])
+
+
+@mixers_bp.route("/api/mixers/<int:mixer_id>/availability")
+def mixer_availability(mixer_id):
+    mixer = Mixer.query.get_or_404(mixer_id)
+    booking_date = request.args.get("date", "")
+    start_time = request.args.get("start_time", "")
+    end_time = request.args.get("end_time", "")
+
+    if not all((booking_date, start_time, end_time)):
+        return jsonify({
+            "success": False,
+            "message": "date, start_time and end_time are required",
+        }), 400
+
+    try:
+        available, message = validate_no_conflict(
+            mixer.id,
+            booking_date,
+            start_time,
+            end_time,
+        )
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "message": "Invalid date or time format",
+        }), 400
+
+    return jsonify({
+        "success": True,
+        "mixer_id": mixer.id,
+        "mixer": mixer.name,
+        "date": booking_date,
+        "start_time": start_time,
+        "end_time": end_time,
+        "available": available,
+        "message": message,
+    })
