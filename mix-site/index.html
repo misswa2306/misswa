@@ -221,12 +221,12 @@ am
         }
 
         .nav-logo {
-            height: 65px;
+            height: 96px;
             width: auto;
-            max-width: 250px;
+            max-width: 260px;
             object-fit: contain;
             display: block;
-            filter: drop-shadow(0 0 10px rgba(192, 132, 252, 0.12));
+            filter: drop-shadow(0 0 12px rgba(192, 132, 252, 0.16));
             margin-left: 12px;
         }
 
@@ -1117,6 +1117,23 @@ am
             padding: 10px 8px;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .time-card:hover:not(:disabled),
+        .time-card:focus-visible:not(:disabled) {
+            transform: translateY(-1px);
+            border-color: rgba(196, 181, 253, 0.38);
+        }
+
+        .time-card:disabled,
+        .time-card.is-disabled {
+            background: rgba(122, 128, 139, 0.22);
+            border-color: rgba(122, 128, 139, 0.18);
+            color: rgba(214, 218, 227, 0.7);
+            cursor: not-allowed;
+            opacity: 0.9;
+            box-shadow: none;
+            pointer-events: auto;
         }
 
         .time-card.is-selected {
