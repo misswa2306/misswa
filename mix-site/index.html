@@ -1571,8 +1571,8 @@
                                 <input type="text" id="artist" name="artist" placeholder="Artiste / groupe" required>
                             </div>
                             <div class="form-group">
-                                <label for="contact">Téléphone ou Email</label>
-                                <input type="text" id="contact" name="contact" placeholder="+1 514 123 4567" required>
+                                <label for="client_instagram">Instagram</label>
+                                <input type="text" id="client_instagram" name="client_instagram" placeholder="@ton_instagram" required>
                             </div>
                         </div>
 
@@ -2095,7 +2095,7 @@
         document.getElementById('bookingForm').addEventListener('submit', async function (event) {
             event.preventDefault();
             const artist = document.getElementById('artist').value;
-            const contact = document.getElementById('contact').value;
+            const clientInstagram = document.getElementById('client_instagram').value;
             const service = document.getElementById('service').value;
             const mixer = document.getElementById('mixer').value;
             const bookingDate = selectedDate.value;
@@ -2118,7 +2118,7 @@
                     },
                     body: JSON.stringify({
                         artist,
-                        contact,
+                        client_instagram: clientInstagram,
                         service,
                         mixer,
                         booking_date: bookingDate,
@@ -2133,7 +2133,7 @@
                     throw new Error(result.message || 'Erreur lors de la réservation.');
                 }
 
-                success.innerText = 'Demande envoyée — ' + artist + ' • ' + service + ' avec ' + mixer + ' le ' + bookingDate + ' de ' + bookingStart + ' à ' + bookingEnd + '. Nous vous contactons bientôt (' + contact + ').';
+                success.innerText = 'Demande envoyée — ' + artist + ' • ' + service + ' avec ' + mixer + ' le ' + bookingDate + ' de ' + bookingStart + ' à ' + bookingEnd + '. Instagram : ' + clientInstagram + '.';
                 success.style.display = 'block';
             } catch (error) {
                 success.innerText = error.message || 'Erreur lors de la réservation.';

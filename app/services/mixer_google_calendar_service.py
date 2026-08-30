@@ -108,11 +108,12 @@ class MixerGoogleCalendarService:
             service = self.get_service()
             start_dt, end_dt = self.reservation_datetimes(reservation)
             body = {
-                "summary": f"RESTLESS STUDIO — {reservation.client_name} (Mixer: {effective_mixer.name})",
+                "summary": f"RESTLESS STUDIO — {reservation.client_instagram} (Mixer: {effective_mixer.name})",
                 "description": (
-                    f"Service: {reservation.service}\n"
-                    f"Contact: {reservation.client_contact}\n"
-                    f"Mixer attribué: {effective_mixer.name}"
+                    f"📸 Client Instagram : {reservation.client_instagram}\n"
+                    f"🎛️ Mixer attribué : {effective_mixer.name}\n"
+                    f"🎙️ Service : {reservation.service}\n"
+                    f"📅 Date & Heure : {reservation.reservation_date} ({reservation.start_time} - {reservation.end_time})"
                 ),
                 "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/Montreal"},
                 "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/Montreal"},
@@ -137,11 +138,12 @@ class MixerGoogleCalendarService:
                 calendarId=self.calendar_id(),
                 eventId=reservation.google_calendar_event_id,
             ).execute()
-            event["summary"] = f"RESTLESS STUDIO — {reservation.client_name} (Mixer: {effective_mixer.name})"
+            event["summary"] = f"RESTLESS STUDIO — {reservation.client_instagram} (Mixer: {effective_mixer.name})"
             event["description"] = (
-                f"Service: {reservation.service}\n"
-                f"Contact: {reservation.client_contact}\n"
-                f"Mixer attribué: {effective_mixer.name}"
+                f"📸 Client Instagram : {reservation.client_instagram}\n"
+                f"🎛️ Mixer attribué : {effective_mixer.name}\n"
+                f"🎙️ Service : {reservation.service}\n"
+                f"📅 Date & Heure : {reservation.reservation_date} ({reservation.start_time} - {reservation.end_time})"
             )
             event["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "America/Montreal"}
             event["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "America/Montreal"}

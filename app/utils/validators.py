@@ -2,15 +2,17 @@ from datetime import datetime
 
 
 def validate_booking_payload(data):
-    required = ["artist", "contact", "service", "mixer", "booking_date", "start_time", "end_time"]
+    required = ["artist", "client_instagram", "service", "mixer", "booking_date", "start_time", "end_time"]
+    if not data.get("client_instagram") and data.get("contact"):
+        data["client_instagram"] = data["contact"]
     missing = [field for field in required if not data.get(field)]
     if missing:
         return False, f"Missing required fields: {', '.join(missing)}"
 
     if not data["artist"].strip():
         return False, "Artist name is required"
-    if not data["contact"].strip():
-        return False, "Contact is required"
+    if not data["client_instagram"].strip():
+        return False, "Instagram is required"
     if not data["service"].strip():
         return False, "Service is required"
     if not data["mixer"].strip():

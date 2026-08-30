@@ -69,9 +69,13 @@ def create_booking_from_payload(payload):
         if not valid:
             return None, message
 
+        instagram = payload["client_instagram"].strip()
+        if not instagram.startswith("@"):
+            instagram = f"@{instagram}"
+
         booking = Reservation(
             client_name=payload["artist"].strip(),
-            client_contact=payload["contact"].strip(),
+            client_instagram=instagram,
             service=payload["service"].strip(),
             mixer_id=mixer.id,
             reservation_date=datetime.strptime(payload["booking_date"], "%Y-%m-%d").date(),

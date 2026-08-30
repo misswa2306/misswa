@@ -113,8 +113,9 @@ def google_callback():
             raise RuntimeError("Missing OAuth code")
 
         state = request.args.get("state")
+        legacy_oauth_state = OAuthState.query.filter_by(state=state).first() if state else None
         expected_state = session.pop("google_master_oauth_state", None)
-        if expected_state and state != expected_state:
+        if not legacy_oauth_state and expected_state and state != expected_state:
             raise RuntimeError("Invalid OAuth state")
 
         flow = build_oauth_flow()
@@ -126,13 +127,20 @@ def google_callback():
         flow.fetch_token(code=code)
 
         credentials = flow.credentials
+        claims = {}
+        if legacy_oauth_state:
+            claims = id_token.verify_oauth2_token(
+                credentials.id_token,
+                google_requests.Request(),
+                os.environ.get("GOOGLE_CLIENT_ID"),
+            )
         current_app.logger.info(
             "Google OAuth callback verified: access_token_present=%s refresh_token_present=%s",
             bool(credentials.token),
             bool(credentials.refresh_token),
         )
 
-        account_email = (current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL") or "studio-admin@localhost").strip()
+        account_email = (claims.get("email") or current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL") or "studio-admin@localhost").strip()
         account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
         if account is None:
             account = GoogleCalendarAccount(account_email=account_email, calendar_id="primary")
@@ -144,7 +152,12 @@ def google_callback():
         account.calendar_id = "primary"
         account.connected_at = datetime.utcnow()
 
+        if legacy_oauth_state:
+            db.session.delete(legacy_oauth_state)
         db.session.commit()
+        if legacy_oauth_state:
+            flash("Google Calendar du studio connecté.", "success")
+            return redirect(url_for("mixers.dashboard"))
         return "Google Calendar Master connecté avec succès ! Vous pouvez fermer cette page."
     except Exception as exc:
         db.session.rollback()

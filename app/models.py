@@ -67,6 +67,14 @@ class Reservation(db.Model):
     mixer_id = db.Column(db.Integer, db.ForeignKey("mixers.id"), nullable=False)
     mixer = db.relationship("Mixer", back_populates="reservations")
 
+    @property
+    def client_instagram(self):
+        return self.client_contact
+
+    @client_instagram.setter
+    def client_instagram(self, value):
+        self.client_contact = value
+
 
 class OAuthState(db.Model):
     __tablename__ = "oauth_states"
