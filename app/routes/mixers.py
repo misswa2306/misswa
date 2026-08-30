@@ -1,7 +1,7 @@
-from flask import Blueprint, jsonify, render_template_string, request
+from flask import Blueprint, current_app, jsonify, render_template_string, request
 from flask_login import login_required, current_user
 
-from app.models import Mixer
+from app.models import GoogleCalendarAccount, Mixer
 from app.services.booking_service import validate_no_conflict
 
 mixers_bp = Blueprint("mixers", __name__)
@@ -11,10 +11,13 @@ mixers_bp = Blueprint("mixers", __name__)
 @login_required
 def dashboard():
     mixer = Mixer.query.get(current_user.id)
+    account = GoogleCalendarAccount.query.filter_by(
+        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
+    ).first()
     return render_template_string('''
         <h2>Dashboard mixeur</h2>
         <p>Mixeur : {{ mixer.name }}</p>
-        {% if mixer.google_calendar_connected %}
+        {% if account and account.access_token %}
             <p>Google Calendar connecté ✓</p>
             <form method="post" action="/google/disconnect">
                 <button type="submit">Déconnecter Google Calendar</button>
@@ -22,7 +25,7 @@ def dashboard():
         {% else %}
             <a href="/google/connect">Connecter Google Calendar</a>
         {% endif %}
-    ''', mixer=mixer)
+    ''', mixer=mixer, account=account)
 
 
 @mixers_bp.route("/api/mixers")

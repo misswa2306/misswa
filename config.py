@@ -11,6 +11,8 @@ class Config:
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:5000/google/callback")
+    GOOGLE_CALENDAR_ACCOUNT_EMAIL = os.environ.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
+    GOOGLE_TIME_ZONE = os.environ.get("GOOGLE_TIME_ZONE", "America/Montreal")
     GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
     APP_URL = os.environ.get("APP_URL", "http://localhost:5000")
     FLASK_ENV = os.environ.get("FLASK_ENV", "development")

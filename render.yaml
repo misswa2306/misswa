@@ -18,8 +18,12 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: GOOGLE_CALENDAR_ACCOUNT_EMAIL
+        value: adminresteless@gmail.com
       - key: GOOGLE_REDIRECT_URI
         value: https://restless-24-7.onrender.com/google/callback
+      - key: GOOGLE_TIME_ZONE
+        value: America/Montreal
       - key: APP_URL
         value: https://restless-24-7.onrender.com
       - key: MIXER_SLEEZE_PASSWORD

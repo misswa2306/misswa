@@ -34,6 +34,18 @@ class Mixer(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 
+class GoogleCalendarAccount(db.Model):
+    __tablename__ = "google_calendar_accounts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_email = db.Column(db.String(255), unique=True, nullable=False)
+    access_token = db.Column(db.Text, nullable=True)
+    refresh_token = db.Column(db.Text, nullable=True)
+    token_expiry = db.Column(db.DateTime, nullable=True)
+    calendar_id = db.Column(db.String(255), nullable=False, default="primary")
+    connected_at = db.Column(db.DateTime, nullable=True)
+
+
 class Reservation(db.Model):
     __tablename__ = "reservations"
 
