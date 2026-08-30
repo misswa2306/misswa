@@ -1800,7 +1800,7 @@
         const mixerSelect = document.getElementById('mixer');
         let mixerIds = {};
         let availabilityRequestId = 0;
-        let currentOccupied = [];
+        const bookedSlots = { value: Object.freeze([]) };
 
         document.querySelectorAll('.team-book').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -1881,7 +1881,7 @@
             timeSummary.textContent = 'Session : ' + startValue + ' - ' + endValue + ' • ' + durationText;
         }
 
-        function intervalIsAvailable(startValue, endValue, occupied = currentOccupied) {
+        function intervalIsAvailable(startValue, endValue, occupied = bookedSlots.value) {
             const startMinutes = diffMinutes('00:00', startValue);
             const endMinutes = diffMinutes('00:00', endValue);
             if (endMinutes <= startMinutes) return false;
@@ -1892,7 +1892,7 @@
             });
         }
 
-        function getNearestValidEnd(startValue, occupied = currentOccupied) {
+        function getNearestValidEnd(startValue, occupied = bookedSlots.value) {
             const startMinutes = Number(startValue.split(':')[0]) * 60 + Number(startValue.split(':')[1]);
             const candidates = validSessionDurations.map((duration) => {
                 const endMinutes = (startMinutes + duration) % (24 * 60);
@@ -1912,11 +1912,11 @@
             return best ? best.value : null;
         }
 
-        function resetTimeSlotsUI(occupied = currentOccupied) {
+        function updateUI() {
             document.querySelectorAll('.time-card').forEach((button) => {
                 const timeValue = button.dataset.time || button.textContent;
                 const valueMinutes = diffMinutes('00:00', timeValue);
-                const isActuallyBooked = occupied.some((booking) => {
+                const isActuallyBooked = bookedSlots.value.some((booking) => {
                     const bookingStart = diffMinutes('00:00', booking.start_time);
                     const bookingEnd = diffMinutes('00:00', booking.end_time);
                     return valueMinutes >= bookingStart && valueMinutes < bookingEnd;
@@ -1926,16 +1926,28 @@
                 button.classList.toggle('is-disabled', isActuallyBooked);
                 button.classList.remove('is-selected');
             });
-        }
 
-        function onStartTimeSelect(selectedStart, occupied = currentOccupied) {
-            resetTimeSlotsUI(occupied);
+            const selectedStart = startTime.value;
+            const selectedStartMinutes = selectedStart ? diffMinutes('00:00', selectedStart) : null;
             document.querySelectorAll('#endGrid .time-card').forEach((button) => {
                 const timeValue = button.dataset.time || button.textContent;
-                if (diffMinutes('00:00', timeValue) <= diffMinutes('00:00', selectedStart)) {
+                const timeMinutes = diffMinutes('00:00', timeValue);
+                const crossesBookedSlot = selectedStart && bookedSlots.value.some((booking) => {
+                    const bookingStart = diffMinutes('00:00', booking.start_time);
+                    const bookingEnd = diffMinutes('00:00', booking.end_time);
+                    return selectedStartMinutes < bookingEnd && bookingStart < timeMinutes;
+                });
+                if (selectedStart && (timeMinutes <= selectedStartMinutes || crossesBookedSlot)) {
                     button.disabled = true;
                     button.classList.add('is-disabled');
                 }
+            });
+
+            document.querySelectorAll('#startGrid .time-card').forEach((button) => {
+                if (button.dataset.time === startTime.value) button.classList.add('is-selected');
+            });
+            document.querySelectorAll('#endGrid .time-card').forEach((button) => {
+                if (button.dataset.time === endTime.value && !button.disabled) button.classList.add('is-selected');
             });
         }
 
@@ -1956,15 +1968,7 @@
                     const bookingEnd = diffMinutes('00:00', booking.end_time);
                     return valueMinutes >= bookingStart && valueMinutes < bookingEnd;
                 });
-                let intervalUnavailable = false;
-                if (type === 'start') {
-                    intervalUnavailable = !getNearestValidEnd(value, occupied);
-                } else {
-                    const selectedStart = startTime.value || '10:00';
-                    intervalUnavailable = !intervalIsAvailable(selectedStart, value, occupied)
-                        || !validSessionDurations.includes(diffMinutes(selectedStart, value));
-                }
-                if (!isPast) options.push({ value, disabled: isOccupied || intervalUnavailable });
+                if (!isPast) options.push({ value, disabled: isOccupied });
             }
 
             options.forEach(({ value, disabled }) => {
@@ -1984,10 +1988,9 @@
                         const nextStart = value;
                         const proposedEnd = getNearestValidEnd(nextStart, occupied);
                         if (!proposedEnd) return;
-                        onStartTimeSelect(nextStart, occupied);
                         startTime.value = nextStart;
                         endTime.value = proposedEnd;
-                        renderTimeGrids(occupied);
+                        updateUI();
                         updateSummary();
                         return;
                     }
@@ -2005,9 +2008,8 @@
                         return;
                     }
 
-                    resetTimeSlotsUI(occupied);
                     endTime.value = value;
-                    renderTimeGrids(occupied);
+                    updateUI();
                     updateSummary();
                 });
                 container.appendChild(button);
@@ -2015,11 +2017,12 @@
         }
 
         function renderTimeGrids(occupied) {
-            currentOccupied = occupied;
+            bookedSlots.value = Object.freeze(occupied.slice());
             document.getElementById('startGrid').innerHTML = '';
             document.getElementById('endGrid').innerHTML = '';
-            buildTimeGrid('startGrid', startTime.value, 'start', occupied);
-            buildTimeGrid('endGrid', endTime.value, 'end', occupied);
+            buildTimeGrid('startGrid', startTime.value, 'start', bookedSlots.value);
+            buildTimeGrid('endGrid', endTime.value, 'end', bookedSlots.value);
+            updateUI();
         }
 
         async function refreshAvailability() {
