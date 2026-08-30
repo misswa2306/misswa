@@ -6,11 +6,10 @@ from flask_login import login_required
 from app.extensions import db
 from app.models import Reservation, Mixer, GoogleSyncLog
 from app.services.booking_service import create_booking_from_payload, validate_no_conflict
-from app.services.mixer_google_calendar_service import MixerGoogleCalendarService
+from app.services.mixer_google_calendar_service import MixerGoogleCalendarService as GoogleCalendarService
 from app.utils.validators import validate_booking_payload
 
 bookings_bp = Blueprint("bookings", __name__)
-GoogleCalendarService = MixerGoogleCalendarService
 
 
 @bookings_bp.route("/api/bookings", methods=["POST"])
@@ -60,7 +59,6 @@ def create_booking():
         booking.google_sync_status = "not_connected"
         db.session.commit()
         return jsonify({
-            "success": True,
             "message": "Reservation saved, but the mixer's Google Calendar is not connected.",
             "booking_id": booking.id,
             "google_sync_status": booking.google_sync_status,
