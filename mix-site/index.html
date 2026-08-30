@@ -36,7 +36,7 @@
 
         html {
             scroll-behavior: smooth;
-            scroll-padding-top: 90px;
+            scroll-padding-top: 150px;
         }
 
         body {
@@ -70,7 +70,7 @@
                     transparent 170px
                 ),
                 linear-gradient(180deg, #030507 0%, #090d13 26%, #0b0d12 100%);
-            padding-top: 68px;
+            padding-top: 110px;
             cursor: default;
         }
 
@@ -178,6 +178,7 @@ am
             right: 0;
             top: 0;
             z-index: 50;
+            min-height: 110px;
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             background: rgba(7, 8, 13, 0.76);
@@ -196,24 +197,25 @@ am
             display: flex;
             align-items: center;
             justify-content: space-between;
-            min-height: 68px;
+            min-height: 110px;
             gap: 10px;
             transition: min-height 0.28s ease;
         }
 
         .site-nav.scrolled .nav-inner {
-            min-height: 60px;
+            min-height: 92px;
         }
 
         .navbar-brand {
             display: inline-flex;
             align-items: center;
             justify-content: flex-start;
-            min-height: 68px;
+            min-height: 110px;
             text-decoration: none;
             padding: 2px 0;
             margin-left: 0;
             transition: transform 0.28s ease;
+            flex-shrink: 0;
         }
 
         .site-nav.scrolled .navbar-brand {
@@ -221,13 +223,16 @@ am
         }
 
         .nav-logo {
-            height: 96px;
+            height: 150px;
             width: auto;
-            max-width: 260px;
+            max-width: none;
+            max-height: 150px;
+            min-width: 120px;
             object-fit: contain;
             display: block;
             filter: drop-shadow(0 0 12px rgba(192, 132, 252, 0.16));
             margin-left: 12px;
+            flex-shrink: 0;
         }
 
         .logo-img {
@@ -1225,6 +1230,30 @@ am
         }
 
         @media (max-width: 760px) {
+            html {
+                scroll-padding-top: 120px;
+            }
+
+            body {
+                padding-top: 92px;
+            }
+
+            .nav-logo {
+                height: 94px;
+                max-height: 94px;
+                min-width: 90px;
+                margin-left: 0;
+            }
+
+            .nav-inner,
+            .site-nav {
+                min-height: 92px;
+            }
+
+            .navbar-brand {
+                min-height: 92px;
+            }
+
             .nav-toggle {
                 display: inline-flex;
                 align-items: center;
