@@ -1,16 +1,16 @@
 import os
 import secrets
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, redirect, request, session, url_for, jsonify
-from flask_login import login_required
+from flask import Blueprint, current_app, redirect, request, jsonify
+from flask_login import current_user, login_required
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 from app.extensions import db
-from app.models import Mixer, GoogleCalendarAccount, OAuthState
+from app.models import Mixer, OAuthState
 
 
 google_bp = Blueprint("google", __name__)
@@ -18,6 +18,7 @@ GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.freebusy",
 ]
 
 
@@ -50,15 +51,22 @@ def safe_oauth_error(exc):
 
 
 @google_bp.route("/google/connect")
+@login_required
 def connect_google():
     flow = build_oauth_flow()
     state = secrets.token_urlsafe(32)
-    session["oauth_state"] = state
+    OAuthState.query.filter_by(mixer_id=current_user.id).delete()
+    db.session.add(OAuthState(
+        mixer_id=current_user.id,
+        state=state,
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+    ))
+    db.session.commit()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="false",
         prompt="consent",
-        login_hint=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip(),
+        login_hint=current_user.email,
         state=state,
     )
     current_app.logger.info(
@@ -80,9 +88,14 @@ def google_callback():
         return jsonify({"error": "Google OAuth authorization was not completed"}), 400
 
     state = request.args.get("state")
-    if not state or state != session.get("oauth_state"):
+    oauth_state = OAuthState.query.filter_by(state=state).first() if state else None
+    if not oauth_state or oauth_state.expires_at < datetime.utcnow():
         return jsonify({"error": "Invalid OAuth state"}), 400
-    session.pop("oauth_state", None)
+    mixer = Mixer.query.get(oauth_state.mixer_id)
+    db.session.delete(oauth_state)
+    db.session.commit()
+    if not mixer:
+        return jsonify({"error": "Mixer not found"}), 404
 
     code = request.args.get("code")
     if not code:
@@ -105,11 +118,6 @@ def google_callback():
         return jsonify({"error": "Google OAuth token exchange failed"}), 502
 
     credentials = flow.credentials
-    account_email = current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
-    if not account_email:
-        current_app.logger.error("Google OAuth callback rejected: admin account email is not configured")
-        return jsonify({"error": "Google Calendar account email is not configured"}), 500
-
     try:
         claims = id_token.verify_oauth2_token(
             credentials.id_token,
@@ -120,28 +128,20 @@ def google_callback():
         current_app.logger.exception("Google OAuth identity verification failed")
         return jsonify({"error": "Google account identity could not be verified"}), 502
 
-    authorized_email = claims.get("email", "").strip().lower()
-    if authorized_email != account_email.lower():
-        current_app.logger.error("Google OAuth account mismatch: configured account does not match authorized account")
-        return jsonify({"error": "The authorized Google account is not the configured administrator account"}), 403
-
     current_app.logger.info(
-        "Google OAuth callback verified: account_match=%s access_token_present=%s refresh_token_present=%s",
-        True,
+        "Google OAuth callback verified: mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
+        mixer.id,
+        bool(claims.get("email")),
         bool(credentials.token),
         bool(credentials.refresh_token),
     )
 
-    account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
-    if account is None:
-        account = GoogleCalendarAccount(account_email=account_email)
-        db.session.add(account)
-
-    account.access_token = credentials.token
-    account.refresh_token = credentials.refresh_token or account.refresh_token
-    account.token_expiry = credentials.expiry
-    account.connected_at = datetime.utcnow()
-    account.calendar_id = "primary"
+    mixer.google_access_token = credentials.token
+    mixer.google_refresh_token = credentials.refresh_token or mixer.google_refresh_token
+    mixer.google_token_expiry = credentials.expiry
+    mixer.google_calendar_id = "primary"
+    mixer.google_calendar_connected = True
+    mixer.connected_at = datetime.utcnow()
     db.session.commit()
 
     return redirect("/")
@@ -150,12 +150,11 @@ def google_callback():
 @google_bp.route("/google/disconnect", methods=["POST"])
 @login_required
 def disconnect_google():
-    account_email = current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "").strip()
-    account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
-    if account:
-        account.access_token = None
-        account.refresh_token = None
-        account.token_expiry = None
-        account.calendar_id = "primary"
+    mixer = Mixer.query.get(current_user.id)
+    mixer.google_calendar_connected = False
+    mixer.google_access_token = None
+    mixer.google_refresh_token = None
+    mixer.google_token_expiry = None
+    mixer.google_calendar_id = "primary"
     db.session.commit()
     return jsonify({"success": True, "message": "Google Calendar disconnected."})

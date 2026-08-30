@@ -15,9 +15,9 @@ os.environ.setdefault("MIXER_BOA_PASSWORD", "test-boa-password")
 
 from app import create_app
 from app.extensions import db
-from app.models import GoogleCalendarAccount, Mixer, Reservation
+from app.models import Mixer, OAuthState, Reservation
 from app.routes import google as google_routes
-from app.services.google_calendar_service import GoogleCalendarService
+from app.services.mixer_google_calendar_service import MixerGoogleCalendarService
 
 
 class FakeCredentials:
@@ -48,15 +48,22 @@ class FakeFlow:
 
 class FakeCalendarService:
     events = []
-    get_shared_account = staticmethod(GoogleCalendarService.get_shared_account)
 
-    def __init__(self, mixer, account):
+    def __init__(self, mixer):
         self.mixer = mixer
-        self.account = account
+
+    def is_available_for_window(self, reservation_date, start_time, end_time):
+        return True
 
     def create_event(self, reservation):
-        self.events.append((self.account.account_email, self.account.calendar_id, self.mixer.name))
+        self.events.append((self.mixer.google_access_token, self.mixer.google_calendar_id, self.mixer.name))
         return f"event-{reservation.id}"
+
+    def update_event(self, reservation):
+        return {"id": reservation.google_calendar_event_id}
+
+    def delete_event(self, reservation):
+        return True
 
 
 class GoogleCalendarFlowTests(unittest.TestCase):
@@ -80,13 +87,12 @@ class GoogleCalendarFlowTests(unittest.TestCase):
                 mixer = Mixer(name=name, email=email)
                 mixer.set_password(f"test-{name.lower()}-password")
                 db.session.add(mixer)
-            db.session.add(GoogleCalendarAccount(
-                account_email="adminrestless@gmail.com",
-                access_token="stored-access-token",
-                refresh_token="stored-refresh-token",
-                token_expiry=datetime.utcnow() + timedelta(hours=1),
-                calendar_id="primary",
-            ))
+            for mixer in Mixer.query.all():
+                mixer.google_access_token = f"{mixer.name.lower()}-access-token"
+                mixer.google_refresh_token = f"{mixer.name.lower()}-refresh-token"
+                mixer.google_token_expiry = datetime.utcnow() + timedelta(hours=1)
+                mixer.google_calendar_id = "primary"
+                mixer.google_calendar_connected = True
             db.session.commit()
         FakeCalendarService.events = []
 
@@ -96,9 +102,10 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             google_routes.id_token, "verify_oauth2_token", return_value={"email": "adminrestless@gmail.com"}
         ):
             client = self.app.test_client()
+            client.post("/mixer/login", data={"email": "sleeze@test.local", "password": "test-sleeze-password"})
             connect = client.get("/google/connect")
-            with client.session_transaction() as session:
-                state = session["oauth_state"]
+            with self.app.app_context():
+                state = OAuthState.query.one().state
             callback = client.get(f"/google/callback?state={state}&code=oauth-code")
         self.assertEqual(connect.status_code, 302)
         self.assertIn("accounts.google.com", connect.headers["Location"])
@@ -107,11 +114,11 @@ class GoogleCalendarFlowTests(unittest.TestCase):
         self.assertNotIn("redirect_uri", flow.fetch_token_kwargs)
         self.assertEqual(flow.authorization_kwargs["include_granted_scopes"], "false")
         self.assertEqual(flow.authorization_kwargs["prompt"], "consent")
-        self.assertEqual(flow.authorization_kwargs["login_hint"], "adminrestless@gmail.com")
+        self.assertEqual(flow.authorization_kwargs["login_hint"], "sleeze@test.local")
         with self.app.app_context():
-            account = GoogleCalendarAccount.query.one()
-            self.assertTrue(account.access_token)
-            self.assertTrue(account.refresh_token)
+            mixer = Mixer.query.filter_by(name="Sleeze").one()
+            self.assertTrue(mixer.google_access_token)
+            self.assertTrue(mixer.google_refresh_token)
 
     def test_four_mixers_use_one_primary_calendar(self):
         with patch.object(booking_module := __import__("app.routes.bookings", fromlist=["GoogleCalendarService"]), "GoogleCalendarService", FakeCalendarService):
@@ -123,7 +130,9 @@ class GoogleCalendarFlowTests(unittest.TestCase):
                 })
                 self.assertEqual(response.status_code, 201)
         self.assertEqual(len(FakeCalendarService.events), 4)
-        self.assertEqual({event[0] for event in FakeCalendarService.events}, {"adminrestless@gmail.com"})
+        self.assertEqual({event[0] for event in FakeCalendarService.events}, {
+            "sleeze-access-token", "kayc-access-token", "ppo-access-token", "boa-access-token"
+        })
         self.assertEqual({event[1] for event in FakeCalendarService.events}, {"primary"})
         self.assertEqual({event[2] for event in FakeCalendarService.events}, {"Sleeze", "Kayc", "PPO", "Boa"})
 
@@ -138,27 +147,64 @@ class GoogleCalendarFlowTests(unittest.TestCase):
                 self.token = "new-access-token"
                 self.expiry = datetime.utcnow() + timedelta(hours=1)
 
-        with self.app.app_context(), patch("app.services.google_calendar_service.Credentials", return_value=RefreshableCredentials()), patch("app.services.google_calendar_service.Request"):
-            account = GoogleCalendarAccount.query.one()
-            service = GoogleCalendarService(Mixer.query.first(), account)
+        with self.app.app_context(), patch("app.services.mixer_google_calendar_service.Credentials", return_value=RefreshableCredentials()), patch("app.services.mixer_google_calendar_service.Request"):
+            mixer = Mixer.query.filter_by(name="Sleeze").one()
+            service = MixerGoogleCalendarService(mixer)
             credentials = service.get_credentials()
             self.assertEqual(credentials.token, "new-access-token")
-            self.assertEqual(account.refresh_token, "old-refresh-token")
+            self.assertEqual(mixer.google_refresh_token, "old-refresh-token")
+
+    def test_freebusy_uses_mixer_primary_calendar_and_montreal_timezone(self):
+        class FakeFreebusyQuery:
+            def __init__(self):
+                self.body = None
+
+            def query(self, body):
+                self.body = body
+                return self
+
+            def execute(self):
+                return {"calendars": {"primary": {"busy": []}}}
+
+        class FakeGoogleService:
+            def __init__(self):
+                self.freebusy_query = FakeFreebusyQuery()
+
+            def freebusy(self):
+                return self.freebusy_query
+
+        with self.app.app_context():
+            mixer = Mixer.query.filter_by(name="PPO").one()
+            service = MixerGoogleCalendarService(mixer)
+            fake_google = FakeGoogleService()
+            reservation = Reservation(
+                reservation_date=datetime.strptime("2099-12-01", "%Y-%m-%d").date(),
+                start_time="15:00", end_time="17:00",
+            )
+            with patch.object(service, "get_service", return_value=fake_google):
+                self.assertTrue(service.is_available(reservation))
+            body = fake_google.freebusy_query.body
+        self.assertEqual(body["items"], [{"id": "primary"}])
+        self.assertEqual(body["timeZone"], "America/Montreal")
+        self.assertIn("-05:00", body["timeMin"])
 
     def test_invalid_oauth_code_returns_generic_error(self):
         flow = FakeFlow()
         with patch.object(google_routes, "build_oauth_flow", return_value=flow):
             client = self.app.test_client()
-            with client.session_transaction() as session:
-                session["oauth_state"] = "state"
+            with self.app.app_context():
+                db.session.add(OAuthState(
+                    mixer_id=Mixer.query.filter_by(name="Sleeze").one().id,
+                    state="state",
+                    expires_at=datetime.utcnow() + timedelta(minutes=10),
+                ))
+                db.session.commit()
             response = client.get("/google/callback?state=state&code=expired-code")
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.get_json(), {"error": "Google OAuth token exchange failed"})
 
     def test_invalid_oauth_state_is_rejected(self):
         client = self.app.test_client()
-        with client.session_transaction() as session:
-            session["oauth_state"] = "expected-state"
         response = client.get("/google/callback?state=wrong-state&code=oauth-code")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json(), {"error": "Invalid OAuth state"})
@@ -470,7 +516,9 @@ class GoogleCalendarFlowTests(unittest.TestCase):
 
     def test_missing_google_account_keeps_booking_saved(self):
         with self.app.app_context():
-            GoogleCalendarAccount.query.delete()
+            mixer = Mixer.query.filter_by(name="Sleeze").one()
+            mixer.google_access_token = None
+            mixer.google_refresh_token = None
             db.session.commit()
         response = self.app.test_client().post("/api/bookings", json={
             "artist": "No Account Client", "contact": "no-account@example.com", "service": "Mix",

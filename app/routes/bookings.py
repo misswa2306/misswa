@@ -4,12 +4,13 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import login_required
 
 from app.extensions import db
-from app.models import Reservation, Mixer, GoogleCalendarAccount, GoogleSyncLog
+from app.models import Reservation, Mixer, GoogleSyncLog
 from app.services.booking_service import create_booking_from_payload, validate_no_conflict
-from app.services.google_calendar_service import GoogleCalendarService
+from app.services.mixer_google_calendar_service import MixerGoogleCalendarService
 from app.utils.validators import validate_booking_payload
 
 bookings_bp = Blueprint("bookings", __name__)
+GoogleCalendarService = MixerGoogleCalendarService
 
 
 @bookings_bp.route("/api/bookings", methods=["POST"])
@@ -32,28 +33,27 @@ def create_booking():
     if not available:
         return jsonify({"success": False, "message": "This time slot is not available."}), 409
 
+    calendar_service = GoogleCalendarService(mixer)
+    if mixer.google_access_token:
+        try:
+            if not calendar_service.is_available_for_window(
+                data["booking_date"], data["start_time"], data["end_time"]
+            ):
+                return jsonify({"success": False, "message": "This time slot is not available on the mixer's Google Calendar."}), 409
+        except Exception as exc:
+            current_app.logger.warning(
+                "Google freebusy check unavailable; continuing with local booking mixer_id=%s error_type=%s",
+                mixer.id,
+                type(exc).__name__,
+            )
+
     booking, error = create_booking_from_payload(data)
     if error:
         return jsonify({"success": False, "message": error}), 409
 
-    try:
-        account = GoogleCalendarService.get_shared_account()
-    except RuntimeError as exc:
-        current_app.logger.error("Booking sync configuration error: error_type=%s message=%s", type(exc).__name__, str(exc))
-        booking.status = "pending"
-        booking.google_sync_status = "configuration_error"
-        booking.last_google_error = str(exc)
-        db.session.commit()
-        return jsonify({
-            "success": True,
-            "message": "Reservation saved, but Google Calendar is not configured.",
-            "booking_id": booking.id,
-            "google_sync_status": booking.google_sync_status,
-        }), 201
-    if not account or not account.access_token:
+    if not mixer.google_access_token:
         current_app.logger.warning(
-            "Booking sync stopped: shared Google account unavailable email_configured=%s mixer_id=%s booking_id=%s",
-            bool(current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL")),
+            "Booking sync stopped: mixer Google account unavailable mixer_id=%s booking_id=%s",
             mixer.id,
             booking.id,
         )
@@ -62,14 +62,14 @@ def create_booking():
         db.session.commit()
         return jsonify({
             "success": True,
-            "message": "Reservation saved, but the shared administrator Google Calendar is not connected.",
+            "message": "Reservation saved, but the mixer's Google Calendar is not connected.",
             "booking_id": booking.id,
             "google_sync_status": booking.google_sync_status,
         }), 201
 
     try:
         current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
-        gcal = GoogleCalendarService(mixer, account)
+        gcal = calendar_service
         event_id = gcal.create_event(booking)
         booking.google_calendar_event_id = event_id
         booking.google_sync_status = "synced"
@@ -165,12 +165,9 @@ def update_booking(booking_id):
 
     db.session.commit()
 
-    account = GoogleCalendarAccount.query.filter_by(
-        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
-    ).first()
-    if account and account.access_token and booking.google_calendar_event_id:
+    if booking.mixer.google_access_token and booking.google_calendar_event_id:
         try:
-            GoogleCalendarService(booking.mixer, account).update_event(booking)
+            GoogleCalendarService(booking.mixer).update_event(booking)
             booking.google_sync_status = "synced"
             booking.last_google_error = None
             db.session.commit()
@@ -193,12 +190,9 @@ def update_booking(booking_id):
 def cancel_booking(booking_id):
     booking = Reservation.query.get_or_404(booking_id)
 
-    account = GoogleCalendarAccount.query.filter_by(
-        account_email=current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL", "")
-    ).first()
-    if account and account.access_token and booking.google_calendar_event_id:
+    if booking.mixer.google_access_token and booking.google_calendar_event_id:
         try:
-            deleted = GoogleCalendarService(booking.mixer, account).delete_event(booking)
+            deleted = GoogleCalendarService(booking.mixer).delete_event(booking)
             if deleted:
                 booking.google_calendar_event_id = None
         except Exception as exc:
