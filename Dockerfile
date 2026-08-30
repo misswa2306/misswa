@@ -1,11 +1,12 @@
-# Use a lightweight web server image
-FROM nginx:alpine
+FROM python:3.13-slim
 
-# Copy your static files to the nginx web root
-COPY . /usr/share/nginx/html/
+WORKDIR /app
 
-# Expose port 80
-EXPOSE 80
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+COPY . .
+
+EXPOSE 5000
+
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-5000} app:app"]
