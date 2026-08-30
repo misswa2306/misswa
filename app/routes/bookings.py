@@ -32,42 +32,26 @@ def create_booking():
     if not available:
         return jsonify({"success": False, "message": "This time slot is not available."}), 409
 
-    calendar_service = GoogleCalendarService(mixer)
-    if mixer.google_access_token or mixer.google_refresh_token:
-        try:
-            if not calendar_service.is_available_for_window(
-                data["booking_date"], data["start_time"], data["end_time"]
-            ):
-                return jsonify({"success": False, "message": "This time slot is not available on the mixer's Google Calendar."}), 409
-        except Exception as exc:
-            current_app.logger.warning(
-                "Google freebusy check unavailable; continuing with local booking mixer_id=%s error_type=%s",
-                mixer.id,
-                type(exc).__name__,
-            )
-
     booking, error = create_booking_from_payload(data)
     if error:
         return jsonify({"success": False, "message": error}), 409
 
-    if not mixer.google_access_token and not mixer.google_refresh_token:
+    calendar_service = GoogleCalendarService(mixer)
+    try:
+        if not calendar_service.is_available_for_window(
+            data["booking_date"], data["start_time"], data["end_time"]
+        ):
+            return jsonify({"success": False, "message": "This time slot is not available on the studio Google Calendar."}), 409
+    except Exception as exc:
         current_app.logger.warning(
-            "Booking sync stopped: mixer Google account unavailable mixer_id=%s booking_id=%s",
+            "Google freebusy check unavailable; continuing with local booking mixer_id=%s error_type=%s",
             mixer.id,
-            booking.id,
+            type(exc).__name__,
         )
-        booking.google_sync_status = "not_connected"
-        db.session.commit()
-        return jsonify({
-            "message": "Reservation saved, but the mixer's Google Calendar is not connected.",
-            "booking_id": booking.id,
-            "google_sync_status": booking.google_sync_status,
-        }), 201
 
     try:
         current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
-        gcal = calendar_service
-        event_id = gcal.create_event(booking)
+        event_id = calendar_service.create_event(booking, mixer=mixer)
         booking.google_calendar_event_id = event_id
         booking.google_sync_status = "synced"
         booking.last_google_error = None

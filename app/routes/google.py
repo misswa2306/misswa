@@ -10,7 +10,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 from app.extensions import db
-from app.models import Mixer, OAuthState
+from app.models import Mixer, OAuthState, GoogleCalendarAccount
 
 
 google_bp = Blueprint("google", __name__)
@@ -72,7 +72,7 @@ def connect_google():
             state=state,
         )
         current_app.logger.info(
-            "Google OAuth started: mixer_id=%s redirect_configured=%s",
+            "Google OAuth started for studio account: admin_mixer_id=%s redirect_configured=%s",
             current_user.id,
             bool(flow.redirect_uri),
         )
@@ -119,22 +119,28 @@ def google_callback():
         )
 
         current_app.logger.info(
-            "Google OAuth callback verified: mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
+            "Google OAuth callback verified: admin_mixer_id=%s google_email_present=%s access_token_present=%s refresh_token_present=%s",
             mixer.id,
             bool(claims.get("email")),
             bool(credentials.token),
             bool(credentials.refresh_token),
         )
 
-        mixer.google_access_token = credentials.token
-        mixer.google_refresh_token = credentials.refresh_token or mixer.google_refresh_token
-        mixer.google_token_expiry = credentials.expiry
-        mixer.google_calendar_id = "primary"
-        mixer.google_calendar_connected = True
-        mixer.connected_at = datetime.utcnow()
+        account_email = (claims.get("email") or current_app.config.get("GOOGLE_CALENDAR_ACCOUNT_EMAIL") or "studio-admin@localhost").strip()
+        account = GoogleCalendarAccount.query.filter_by(account_email=account_email).first()
+        if account is None:
+            account = GoogleCalendarAccount(account_email=account_email, calendar_id="primary")
+            db.session.add(account)
+
+        account.access_token = credentials.token
+        account.refresh_token = credentials.refresh_token or account.refresh_token
+        account.token_expiry = credentials.expiry
+        account.calendar_id = "primary"
+        account.connected_at = datetime.utcnow()
+
         db.session.delete(oauth_state)
         db.session.commit()
-        flash("Google Calendar connecté.", "success")
+        flash("Google Calendar du studio connecté.", "success")
         return redirect(url_for("mixers.dashboard"))
     except Exception as exc:
         db.session.rollback()

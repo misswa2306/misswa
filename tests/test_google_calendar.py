@@ -15,7 +15,7 @@ os.environ.setdefault("MIXER_BOA_PASSWORD", "test-boa-password")
 
 from app import create_app
 from app.extensions import db
-from app.models import Mixer, OAuthState, Reservation
+from app.models import Mixer, OAuthState, Reservation, GoogleCalendarAccount
 from app.routes import google as google_routes
 from app.services.mixer_google_calendar_service import MixerGoogleCalendarService
 
@@ -452,6 +452,62 @@ class GoogleCalendarFlowTests(unittest.TestCase):
             })
         self.assertEqual(response.status_code, 201)
         self.assertTrue(response.get_json()["success"])
+
+    def test_google_callback_persists_master_calendar_account(self):
+        flow = FakeFlow()
+        with patch.object(google_routes, "build_oauth_flow", return_value=flow), patch.object(
+            google_routes.id_token, "verify_oauth2_token", return_value={"email": "adminrestless@gmail.com"}
+        ):
+            client = self.app.test_client()
+            client.post("/mixer/login", data={"email": "sleeze@test.local", "password": "test-sleeze-password"})
+            with self.app.app_context():
+                db.session.add(OAuthState(
+                    mixer_id=Mixer.query.filter_by(name="Sleeze").one().id,
+                    state="shared-state",
+                    expires_at=datetime.utcnow() + timedelta(minutes=10),
+                ))
+                db.session.commit()
+            response = client.get("/google/callback?state=shared-state&code=oauth-code")
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            account = GoogleCalendarAccount.query.filter_by(account_email="adminrestless@gmail.com").one()
+            self.assertTrue(account.access_token)
+            self.assertTrue(account.refresh_token)
+            self.assertEqual(account.calendar_id, "primary")
+
+    def test_google_event_format_uses_shared_master_calendar_and_mixer_name(self):
+        with self.app.app_context():
+            account = GoogleCalendarAccount(
+                account_email="adminrestless@gmail.com",
+                access_token="shared-access-token",
+                refresh_token="shared-refresh-token",
+                calendar_id="primary",
+            )
+            db.session.add(account)
+            db.session.commit()
+            mixer = Mixer.query.filter_by(name="Boa").one()
+            reservation = Reservation(
+                client_name="Client Example",
+                client_contact="client@example.com",
+                service="Mix 2h",
+                mixer_id=mixer.id,
+                reservation_date=datetime.strptime("2099-11-12", "%Y-%m-%d").date(),
+                start_time="18:00",
+                end_time="20:00",
+                status="confirmed",
+            )
+            db.session.add(reservation)
+            db.session.commit()
+
+            service = __import__("app.services.google_calendar_service", fromlist=["GoogleCalendarService"]).GoogleCalendarService(mixer)
+            event = {
+                "summary": f"RESTLESS STUDIO — {reservation.client_name} (Mixer: {mixer.name})",
+                "description": f"Service: {reservation.service}\nContact: {reservation.client_contact}\nMixer attribué: {mixer.name}",
+                "start": {"dateTime": "2099-11-12T18:00:00-05:00", "timeZone": "America/Montreal"},
+                "end": {"dateTime": "2099-11-12T20:00:00-05:00", "timeZone": "America/Montreal"},
+            }
+            self.assertEqual(event["summary"], f"RESTLESS STUDIO — {reservation.client_name} (Mixer: {mixer.name})")
+            self.assertEqual(event["description"], f"Service: {reservation.service}\nContact: {reservation.client_contact}\nMixer attribué: {mixer.name}")
 
     def test_availability_is_scoped_to_mixer_and_date(self):
         with self.app.app_context():
