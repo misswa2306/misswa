@@ -14,77 +14,82 @@ bookings_bp = Blueprint("bookings", __name__)
 
 @bookings_bp.route("/api/bookings", methods=["POST"])
 def create_booking():
-    data = request.get_json(silent=True) or {}
-    ok, message = validate_booking_payload(data)
-    if not ok:
-        return jsonify({"success": False, "message": message}), 400
-
-    mixer_name = (data.get("mixer") or "").strip()
-    mixer = Mixer.query.filter(Mixer.name.ilike(mixer_name)).first()
-    if not mixer:
-        return jsonify({"success": False, "message": "Mixer non trouvé"}), 404
-
-    available, _ = validate_no_conflict(
-        mixer.id,
-        data["booking_date"],
-        data["start_time"],
-        data["end_time"],
-    )
-    if not available:
-        return jsonify({"success": False, "message": "This time slot is not available."}), 409
-
-    booking, error = create_booking_from_payload(data)
-    if error:
-        return jsonify({"success": False, "message": error}), 409
-
-    calendar_service = GoogleCalendarService(mixer)
     try:
-        if not calendar_service.is_available_for_window(
-            data["booking_date"], data["start_time"], data["end_time"]
-        ):
-            return jsonify({"success": False, "message": "This time slot is not available on the studio Google Calendar."}), 409
-    except Exception as exc:
-        current_app.logger.warning(
-            "Google freebusy check unavailable; continuing with local booking mixer_id=%s error_type=%s",
+        data = request.get_json(silent=True) or {}
+        ok, message = validate_booking_payload(data)
+        if not ok:
+            return jsonify({"success": False, "message": message}), 400
+
+        mixer_name = (data.get("mixer") or "").strip()
+        mixer = Mixer.query.filter(Mixer.name.ilike(mixer_name)).first()
+        if not mixer:
+            return jsonify({"success": False, "message": "Mixer non trouvé"}), 404
+
+        available, _ = validate_no_conflict(
             mixer.id,
-            type(exc).__name__,
+            data["booking_date"],
+            data["start_time"],
+            data["end_time"],
         )
+        if not available:
+            return jsonify({"success": False, "message": "This time slot is not available."}), 409
 
-    try:
-        current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
+        booking, error = create_booking_from_payload(data)
+        if error:
+            return jsonify({"success": False, "message": error}), 409
+
+        calendar_service = GoogleCalendarService(mixer)
         try:
-            event_id = calendar_service.create_event(booking, mixer=mixer)
-        except TypeError as exc:
-            if "unexpected keyword argument 'mixer'" not in str(exc):
-                raise
-            event_id = calendar_service.create_event(booking)
-        booking.google_calendar_event_id = event_id
-        booking.google_sync_status = "synced"
-        booking.last_google_error = None
-        db.session.commit()
-    except Exception as exc:
-        current_app.logger.exception("Google Calendar event creation failed for booking_id=%s", booking.id)
-        booking.google_sync_status = "not_connected" if "not connected" in str(exc).lower() else "error"
-        booking.last_google_error = str(exc)
-        db.session.add(GoogleSyncLog(
-            reservation_id=booking.id,
-            action="create",
-            outcome=booking.google_sync_status,
-            message=str(exc),
-        ))
-        db.session.commit()
+            if not calendar_service.is_available_for_window(
+                data["booking_date"], data["start_time"], data["end_time"]
+            ):
+                return jsonify({"success": False, "message": "This time slot is not available on the studio Google Calendar."}), 409
+        except Exception as exc:
+            current_app.logger.warning(
+                "Google freebusy check unavailable; continuing with local booking mixer_id=%s error_type=%s",
+                mixer.id,
+                type(exc).__name__,
+            )
+
+        try:
+            current_app.logger.info("Booking created; starting Google Calendar sync: booking_id=%s mixer=%s", booking.id, mixer.name)
+            try:
+                event_id = calendar_service.create_event(booking, mixer=mixer)
+            except TypeError as exc:
+                if "unexpected keyword argument 'mixer'" not in str(exc):
+                    raise
+                event_id = calendar_service.create_event(booking)
+            booking.google_calendar_event_id = event_id
+            booking.google_sync_status = "synced"
+            booking.last_google_error = None
+            db.session.commit()
+        except Exception as exc:
+            current_app.logger.exception("Google Calendar event creation failed for booking_id=%s", booking.id)
+            booking.google_sync_status = "not_connected" if "not connected" in str(exc).lower() else "error"
+            booking.last_google_error = str(exc)
+            db.session.add(GoogleSyncLog(
+                reservation_id=booking.id,
+                action="create",
+                outcome=booking.google_sync_status,
+                message=str(exc),
+            ))
+            db.session.commit()
+            return jsonify({
+                "success": True,
+                "message": "Reservation saved, but Google Calendar synchronization failed.",
+                "booking_id": booking.id,
+                "google_sync_status": booking.google_sync_status,
+            }), 201
+
         return jsonify({
             "success": True,
-            "message": "Reservation saved, but Google Calendar synchronization failed.",
+            "message": "Reservation created successfully.",
             "booking_id": booking.id,
-            "google_sync_status": booking.google_sync_status,
         }), 201
-
-    return jsonify({
-        "success": True,
-        "message": "Reservation created successfully.",
-        "booking_id": booking.id,
-    }), 201
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Booking creation failed")
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @bookings_bp.route("/api/bookings/", methods=["GET"])

@@ -2175,10 +2175,19 @@
                     })
                 });
 
-                const result = await response.json();
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = responseText ? JSON.parse(responseText) : {};
+                } catch (parseError) {
+                    console.error('Réponse serveur non JSON:', responseText);
+                    throw new Error('Le serveur a renvoyé une réponse invalide.');
+                }
 
                 if (!response.ok || result.success !== true) {
-                    throw new Error(result.message || 'Erreur lors de la réservation.');
+                    const errorMessage = result.message || result.error || 'Erreur lors de la réservation.';
+                    console.error('Erreur de réservation:', response.status, result);
+                    throw new Error(errorMessage);
                 }
 
                 success.innerText = 'Ta session est book ' + clientInstagram + ' !!!! 🎉🎉';
